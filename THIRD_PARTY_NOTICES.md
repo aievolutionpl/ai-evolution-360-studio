@@ -19,3 +19,9 @@ Original integration code: Copyright (c) 2026 AI Evolution Polska, GPL-3.0-only;
 - Version: 2.5.6 (npm)
 - License: MIT; bundled package includes its LICENSE.
 - Used locally for spherical 360 photo viewing, separate from Gaussian Splat reconstruction.
+
+## Environment export
+- glTF Transform (`@gltf-transform/core`, `extensions`, `functions`): MIT,
+  https://github.com/donmccurdy/glTF-Transform. Exact dependencies in package-lock.json.
+- meshoptimizer: MIT, https://github.com/zeux/meshoptimizer. Used for mesh simplification.
+- Smart Concept Designer is the target application; its source is not bundled.

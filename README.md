@@ -4,7 +4,7 @@
 **Nagraj miejsce kamerą Insta360. Zamień footage w interaktywną wizualizację 3D.**
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-9c78ff.svg)](LICENSE)
-![Status](https://img.shields.io/badge/status-experimental_v0.4.0-729cff)
+![Status](https://img.shields.io/badge/status-experimental_v0.5.0-729cff)
 ![Platform](https://img.shields.io/badge/platform-Windows_10%2F11-729cff)
 
 AI Evolution 360 Studio łączy nagranie wideo, rekonstrukcję Gaussian Splatting i podgląd 3D w jednym prostym interfejsie. Dodajesz film, wybierasz jakość, obserwujesz przetwarzanie, a potem rozglądasz się po odtworzonej przestrzeni i eksportujesz scenę.
@@ -180,3 +180,40 @@ Zmiana wariantu wymaga nowego GLB; interfejs nie proponuje starego modelu jako
 eksportu nowej sceny. Mesh może mieć ubytki, nierówną topologię i inne odbicia niż
 splaty. Wymaga ręcznej kontroli; nie gwarantuje skali pomiarowej ani szczelności
 siatki do druku 3D. Oryginalny eksport PLY nadal służy narzędziom Gaussian Splat.
+
+## Środowisko do Smart Concept Designer (v0.5)
+
+Eksport jest zgodny z importem na
+[Smart Concept Designer](https://aievolutionpl.github.io/smart-concept-designer/).
+Ten edytor Three.js wczytuje samowystarczalne GLB do 30 MiB i projekty JSON
+wersji 1 z osadzonymi własnymi modelami. Nie renderuje SOG ani Gaussian Splat PLY.
+
+1. W Studio otwórz gotową scenę i wybierz wariant (oryginał lub po czyszczeniu).
+2. W sekcji **Środowisko do projektowania** podaj dłuższy bok całego skanu
+   (2–60 m). Domyślne 20 m jest przykładem; rekonstrukcja nie zna pewnej skali.
+3. Wybierz **Przygotuj środowisko**. Studio użyje zgodnej siatki GLB lub
+   najpierw utworzy ją z wybranego wariantu splatów. Pracę możesz anulować.
+4. Pobierz **projekt .forma.json**. W Designerze zapisz dotychczasową kompozycję,
+   wybierz **Otwórz** i ten plik. Skan pojawi się na pustej działce, gotowy do
+   zestawienia z modelami z biblioteki.
+5. Alternatywnie pobierz **environment GLB** i użyj **Dodaj własny model**.
+   Następnie kliknij + przy modelu w bibliotece, aby umieścić go w scenie.
+
+Eksport centruje siatkę w X/Z, wyrównuje najniższy punkt do Y=0 i ustawia
+proporcjonalną skalę. Uproszczenie celuje w 250 tys. trójkątów z ograniczonym
+błędem geometrii; wynik zależy od topologii. Jeśli plik nadal przekracza 30 MiB,
+aplikacja zgłosi błąd zamiast udostępniać niezgodny eksport. Kolory wierzchołków
+korzystają z `KHR_materials_unlit`, ponieważ zawierają już światło z nagrania.
+Zmiana słońca w Designerze nie przelicza oświetlenia zapisanego w skanie.
+
+To **model referencyjny otoczenia**, nie natywne edytowalne elementy Customer
+Garden: pozostaje jednym obiektem w zakładce Scena. Nie tworzy kolizji,
+automatycznego podłoża pod meble ani segmentacji ścian i wyposażenia.
+Przycisk Environment Edit w Designerze dotyczy jego wbudowanego ogrodu.
+Ubytki i artefakty rekonstrukcji pozostają widoczne; eksport nie naprawia
+brakujących powierzchni. Po imporcie sprawdź skalę względem znanego wymiaru.
+
+Przetwarzanie i pliki pozostają lokalnie; importer Designera zapisuje je
+w przeglądarce. Sam import nie publikuje skanu na GitHub Pages dla innych osób.
+Eksporty przechowywane są w `workspace/projects/<id>/environment/`.
+Po aktualizacji istniejącej instalacji uruchom `npm ci` i ponownie Studio.

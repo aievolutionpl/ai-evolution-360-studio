@@ -6,6 +6,7 @@ import { dirname, join, resolve, extname, basename, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
 import {exportBlender} from './blender-export.mjs';
+import {environmentOptions} from './environment-export.mjs';
 import {cleanScene,cleanupPresets} from './scene-cleanup.mjs';
 import { receivePhoto } from './photo-upload.mjs';
 import { cameraSettings } from './viewer-camera.mjs';
@@ -21,7 +22,7 @@ store.recover();
 const engine = ['toolchain/spirula-build-source/build_vulkan/spirula.exe','toolchain/spirula/spirula.exe'].map(p=>join(root,p)).find(existsSync);
 const presets = { fast: { frames:100, size:1280, iterations:3000, cap:150000, quality:'low' }, standard:{ frames:180,size:1600,iterations:10000,cap:400000,quality:'medium' }, max:{frames:400,size:2048,iterations:30000,cap:1000000,quality:'high'} };
 let active = null, uploadBusy = false;
-const health = { product:'AI Evolution 360 Studio', version:'0.4.0', ready:false, engine:'Sprawdzanie silnika…', gpu:'Sprawdzanie GPU…' };
+const health = { product:'AI Evolution 360 Studio', version:'0.5.0', ready:false, engine:'Sprawdzanie silnika…', gpu:'Sprawdzanie GPU…' };
 if (engine) Promise.all([run(engine,['--help'],{timeout:15000}),run(engine,['sam','devices'],{timeout:15000}),run('ffprobe',['-version'],{timeout:15000}),run('ffmpeg',['-version'],{timeout:15000})]).then(([version,gpu])=>Object.assign(health,{ready:true,engine:version.split('\n')[0],gpu:gpu.split('\n').find(l=>/NVIDIA|AMD|Intel/.test(l))?.replace(/\s+/g,' ').trim() || 'Vulkan'})).catch(e=>Object.assign(health,{ready:false,engine:e.message}));
 else health.engine = 'Nie znaleziono Spirula. Sprawdź toolchain.';
 
@@ -166,6 +167,30 @@ async function meshProject(project){
     finally{project.meshExport.finishedAt=new Date().toISOString();store.save(project);active=null;}})();return project;
 }
 
+async function environmentProject(project,options){
+    if(active)throw new Error('Poczekaj na zakończenie bieżącego zadania.');
+    if(project.state!=='ready'||!project.output)throw new Error('Najpierw wygeneruj przestrzeń 3D.');
+    const settings=environmentOptions(options),base=store.path(project.id);
+    const reuse=project.meshOutput?.sourceWeb===project.output.web;
+    if(!reuse)requireDiskSpace(project);
+    else {const d=statfsSync(base);if(d.bavail*d.bsize<256*1024**2)throw new Error('Eksport wymaga co najmniej 256 MB wolnego miejsca.');}
+    const key=`${project.attempt}-${Date.now()}`,folder=join(base,'environment',key);mkdirSync(folder,{recursive:true});
+    const job={id:project.id,kind:'environment',cancelled:false,child:null};
+    const log=join(base,'logs',`environment-${Date.now()}.log`);project.logPath=log;
+    project.environmentExport={status:'processing',phase:reuse?'Optymalizacja istniejącej siatki…':'Budowanie siatki środowiska…',sourceWeb:project.output.web,startedAt:new Date().toISOString()};store.save(project);active=job;let saved=0;
+    const onLine=line=>{project.environmentExport.phase=line;if(Date.now()-saved>800){saved=Date.now();store.save(project);}};
+    (async()=>{try{
+        if(!reuse)project.meshOutput=await exportBlender({base,engine,project,job,log,onLine});
+        const config=join(folder,'options.json');writeFileSync(config,JSON.stringify({...settings,name:project.name,id:key}));
+        await run(process.execPath,[join(root,'services/environment-export.mjs'),join(base,'mesh',project.meshOutput.file),join(folder,'environment'),config],{job,log,onLine,timeout:600000});
+        if(job.cancelled)throw new Error('Anulowano eksport.');
+        const summary=JSON.parse(readFileSync(join(folder,'environment.summary.json'),'utf8'));
+        project.environmentOutput={...summary,file:`${key}/environment`,sourceWeb:project.output.web};
+        project.environmentExport.status='ready';project.environmentExport.phase='Środowisko gotowe do importu.';
+    }catch(error){project.environmentExport.status=job.cancelled?'cancelled':'failed';project.environmentExport.error=job.cancelled?'Anulowano eksport. Poprzednie pliki zachowano.':error.message;}
+    finally{project.environmentExport.finishedAt=new Date().toISOString();store.save(project);active=null;}})();return project;
+}
+
 const server=http.createServer(async(req,res)=>{
     try {
         if(![`127.0.0.1:${port}`,`localhost:${port}`].includes(req.headers.host)){res.writeHead(403);return res.end();}
@@ -198,7 +223,7 @@ const server=http.createServer(async(req,res)=>{
                 renameSync(project.sourcePath+'.part',project.sourcePath);await probe(project);json(res,publicProject(project),201);
             }catch(e){project.state='failed';project.error='Nie udało się odczytać filmu. '+e.message;store.save(project);if(!res.destroyed)json(res,{error:project.error,project:publicProject(project)},400);}finally{uploadBusy=false;}return;
         }
-        const match=path.match(/^\/api\/projects\/([a-f0-9-]+)(?:\/(\w+))?$/);
+        const match=path.match(/^\/api\/projects\/([a-f0-9-]+)(?:\/([a-z0-9_-]+))?$/);
         if(match){const [,id,action]=match;if(!validId(id)||!existsSync(join(store.path(id),'project.json')))return json(res,{error:'Nie znaleziono projektu.'},404);const project=store.get(id);
             if(!action&&req.method==='GET')return json(res,publicProject(project));
             if(action==='photo'&&req.method==='POST'){
@@ -219,6 +244,12 @@ const server=http.createServer(async(req,res)=>{
                 const i=Number(url.searchParams.get('index')||0);
                 if(project.kind!=='photos'||!Number.isInteger(i)||!project.photos[i])throw new Error('Nie znaleziono panoramy.');
                 return asset(res,req,join(store.path(id),'source','photos',project.photos[i].preview));
+            }
+            if(action==='environment'&&req.method==='POST')return json(res,publicProject(await environmentProject(project,await body(req))),202);
+            if(action==='cancelenvironment'&&req.method==='POST'){if(active?.id!==id||active.kind!=='environment')throw new Error('Eksport środowiska nie jest aktywny.');active.cancelled=true;project.environmentExport.status='cancelling';store.save(project);stopChild(active.child);return json(res,{ok:true});}
+            if(['environment-glb','environment-project'].includes(action)&&req.method==='GET'){
+                if(!project.environmentOutput||project.environmentOutput.sourceWeb!==project.output?.web)throw new Error('Przygotuj środowisko dla aktualnego wariantu sceny.');
+                return asset(res,req,safePath(join(store.path(id),'environment'),project.environmentOutput.file+(action==='environment-glb'?'.glb':'.forma.json')),true);
             }
             if(action==='mesh'&&req.method==='POST')return json(res,publicProject(await meshProject(project)),202);
             if(action==='cancelmesh'&&req.method==='POST'){if(active?.id!==id||active.kind!=='mesh')throw new Error('Eksport nie jest aktywny.');active.cancelled=true;project.meshExport.status='cancelling';store.save(project);stopChild(active.child);return json(res,{ok:true});}

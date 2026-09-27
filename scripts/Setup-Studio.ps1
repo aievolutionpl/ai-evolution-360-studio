@@ -8,6 +8,8 @@ function Invoke-Checked([string]$Program, [string[]]$Arguments) {
     & $Program @Arguments
     if ($LASTEXITCODE -ne 0) { throw "$Program failed with exit code $LASTEXITCODE" }
 }
+Push-Location $root
+try { Invoke-Checked npm @('ci') } finally { Pop-Location }
 $dependencies = @(
     @{name='splat-transform'; url='https://github.com/playcanvas/splat-transform.git'; ref='afbc281d765d50185f6182f23abd9c6720b3b998'},
     @{name='supersplat-viewer'; url='https://github.com/playcanvas/supersplat-viewer.git'; ref='733ad5743a718c840960eab7656f45446d8370f1'}
