@@ -22,4 +22,8 @@ Projekty zapisują się lokalnie. Archiwizacja jest odwracalna i nie usuwa plik�
 
 ## Ograniczenia
 
-Aplikacja nie tworzy gotowego filmu reklamowego: odtwarza interaktywną scenę 3D z nagrania. Scena może mieć ubytki i artefakty, nie jest narzędziem pomiarowym. Obecnie sprawdzono cały proces na syntetycznym MP4; jakość z prawdziwego X5/X4 wymaga testu własnego materiału. Dane nie są wysyłane do chmury.
+Aplikacja nie tworzy gotowego filmu reklamowego: odtwarza interaktywną scenę 3D z nagrania. Scena może mieć ubytki i artefakty, nie jest narzędziem pomiarowym. Sprawdzono syntetyczny MP4 i jeden rzeczywisty INSV z dwiema soczewkami. Jakość innych nagrań wymaga osobnego testu. Dane nie są wysyłane do chmury.
+
+## Poruszanie się we wnętrzu
+
+Podgląd zaczyna się w pozycji z nagrania. Użyj „Poprzedni”, „Następny” i „Odwróć widok”, aby oglądać miejsca z trasy kamery. „Wróć do wnętrza” przywraca start. „Pokaż całą bryłę” służy do widoku zewnętrznego, który w skanach pomieszczeń może być nieczytelny. Artefakty przy lustrze, operatorze i poza nagraną trasą mogą pozostać.

@@ -12,3 +12,5 @@ __pycache__/
 docs/verification/
 docs/SPIRULA_ANALYSIS.md
 docs/UI_VALIDATION.md
+
+.serena/

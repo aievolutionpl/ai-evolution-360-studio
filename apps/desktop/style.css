@@ -31,3 +31,5 @@ progress{accent-color:#a280f7}progress::-webkit-progress-value{background:linear
 @keyframes particle-drift{to{background-position:23px -42px}}
 @keyframes scene-scan{0%,100%{background-position:0 100%;opacity:.25}50%{background-position:0 0;opacity:.8}}
 @media(prefers-reduced-motion:reduce){.processing-visual:before,.processing-visual:after,#source-preview.is-processing:after{animation:none!important}}
+
+#route-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:16px 0}#route-controls .secondary{font-size:11px;padding:10px}

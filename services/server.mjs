@@ -5,6 +5,7 @@ import { Transform } from 'node:stream';
 import { dirname, join, resolve, extname, basename, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
+import { cameraSettings } from './viewer-camera.mjs';
 import { ProjectStore, validId } from './project-manager/index.mjs';
 import { run, stopChild, trainingProgress } from './spirula-runner/index.mjs';
 import { defaultSettings } from '../vendor/supersplat-viewer/dist/settings.js';
@@ -95,9 +96,9 @@ async function processProject(project, options) {
             if(!checkpoints.length)throw new Error('Silnik nie zapisał checkpointu.');
             const ply=join(runs,checkpoints.at(-1),'splat.ply');if(!existsSync(ply)||statSync(ply).size<100)throw new Error('Brak poprawnego PLY.');
             stage(5);
-            await command(process.execPath,[join(root,'vendor/splat-transform/bin/cli.mjs'),ply,join(web,'scene.sog')]);
+            await command(process.execPath,[join(root,'vendor/splat-transform/bin/cli.mjs'),ply,'--rotate=-90,0,0',join(web,'scene.sog')]);
             if(!existsSync(join(web,'scene.sog'))||statSync(join(web,'scene.sog')).size<100)throw new Error('Eksport SOG jest pusty.');
-            stage(6);const settings=defaultSettings('object');settings.cameras=[];settings.background.color=[0.035,0.059,0.094];writeFileSync(join(web,'settings.json'),JSON.stringify(settings));
+            stage(6);const settings=cameraSettings(defaultSettings('object'),registered,join(runs,'scene_transform.json'));settings.background.color=[0.035,0.059,0.094];writeFileSync(join(web,'settings.json'),JSON.stringify(settings));
             project.output={web:attempt,ply: `${attempt}/run/${checkpoints.at(-1)}/splat.ply`,bytes:statSync(join(web,'scene.sog')).size};
             project.stage=7;project.state='ready';project.progress=null;project.lastLine='Scena gotowa do obejrzenia.';
         } catch(error){project.state=job.cancelled?'cancelled':'failed';project.error=job.cancelled?'Zadanie anulowane. Materiał źródłowy jest zachowany.':error.message;project.progress=null;}
