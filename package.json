@@ -1,0 +1,20 @@
+{
+  "name": "ai-evolution-360-studio",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "scripts": {
+    "start": "node services/server.mjs",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "GPL-3.0-only",
+  "description": "Local video-to-3D studio for Insta360 footage, powered by Spirula and PlayCanvas.",
+  "author": "AI Evolution Polska",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aievolutionpl/ai-evolution-360-studio.git"
+  }
+}

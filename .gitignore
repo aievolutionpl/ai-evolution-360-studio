@@ -1,0 +1,14 @@
+vendor/
+toolchain/
+workspace/
+node_modules/
+*.log
+__pycache__/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+docs/verification/
+docs/SPIRULA_ANALYSIS.md
+docs/UI_VALIDATION.md

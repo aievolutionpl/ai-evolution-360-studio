@@ -1,0 +1,91 @@
+const $ = id => document.getElementById(id);
+const stages=['Odczyt filmu','Wybór ostrych klatek','Przygotowanie danych','Odtworzenie kamer','Trening sceny 3D','Optymalizacja SOG','Przygotowanie podglądu','Gotowe'];
+const stateNames={uploaded:'Film dodany',uploading:'Dodawanie filmu',processing:'Przetwarzanie',cancelling:'Anulowanie',ready:'Scena gotowa',failed:'Wymaga uwagi',cancelled:'Anulowano',interrupted:'Przerwano'};
+let token='',health={},projects=[],selected=null,preset='fast',viewer=null,viewerKey='',viewerGeneration=0,upload=null,page='studio',polling=false,configuring=false,librarySignature='';
+const bytes=n=>!n?'—':n>=1024**3?(n/1024**3).toFixed(2)+' GB':(n/1024**2).toFixed(1)+' MB';
+const duration=n=>`${Math.floor(n/60).toString().padStart(2,'0')}:${Math.floor(n%60).toString().padStart(2,'0')}`;
+const escape=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const visible=(id,show)=>$(id).hidden=!show;
+function toast(message){$('toast').textContent=message;visible('toast',true);clearTimeout(toast.timer);toast.timer=setTimeout(()=>visible('toast',false),6500);}
+async function api(path,body){const res=await fetch(path,{method:body===undefined?'GET':'POST',headers:body===undefined?{}:{'Content-Type':'application/json','X-Studio-Token':token},body:body===undefined?undefined:JSON.stringify(body)});const data=await res.json();if(!res.ok)throw new Error(data.error||'Nie udało się wykonać operacji.');return data;}
+function showPage(name){page=name;for(const id of ['studio','library','guide'])visible(id,id===name);document.querySelectorAll('.nav').forEach(b=>b.classList.toggle('active',b.dataset.page===name));if(viewer)viewer.state.inputEnabled=name==='studio';if(name==='library')renderLibrary();window.scrollTo({top:0,behavior:'smooth'});}
+document.querySelectorAll('[data-page]').forEach(button=>button.addEventListener('click',()=>showPage(button.dataset.page)));
+function disableTools(disabled){for(const id of ['orbit','fly','frame','reset','fullscreen'])$(id).disabled=disabled;}
+function clearViewer(){viewerGeneration++;const previous=viewer;viewer=null;viewerKey='';try{previous?.destroy();}catch(error){console.warn('Zamykanie podglądu GPU:',error);}$('viewer').replaceChildren();disableTools(true);visible('viewer-loading',false);visible('quality-row',false);$('fps').textContent='';}
+function reset(){configuring=false;poll.restored=true;selected=null;localStorage.removeItem('studio-project');clearViewer();visible('source-info',false);visible('dropzone',true);visible('upload-state',false);visible('preview-empty',true);visible('source-preview',false);visible('processing-panel',false);visible('setup-panel',true);visible('result-panel',false);visible('error-box',false);visible('logs',false);visible('export-bar',false);visible('new-project',false);$('preview-title').textContent='Ta przestrzeń może być Twoja';$('preview-badge').textContent='PODGLĄD';$('file').value='';setStart();showPage('studio');}
+$('new-project').onclick=reset;$('library-new').onclick=reset;
+function choosePreset(name){preset=name;document.querySelectorAll('[data-preset]').forEach(b=>{const active=b.dataset.preset===name;b.classList.toggle('selected',active);b.setAttribute('aria-pressed',String(active));});const p=health.presets?.[preset];if(p)$('preset-note').textContent=`Do ${p.frames} klatek na tor · ${p.size} px · ${p.iterations.toLocaleString('pl-PL')} kroków treningu.`;}
+document.querySelectorAll('[data-preset]').forEach(b=>b.onclick=()=>choosePreset(b.dataset.preset));
+function setStart(){const busy=selected&&['processing','cancelling','uploading'].includes(selected.state);const other=health.busy&&health.busy!==selected?.id;$('start').disabled=!health.ready||!selected?.metadata||busy||Boolean(other)||Boolean(upload);$('start-note').textContent=other?'Inny projekt jest teraz przetwarzany. Otworzysz go w bibliotece.':!health.ready?'Czekamy na gotowość lokalnego silnika.':!selected?.metadata?'Najpierw dodaj film. Czas pracy zależy od nagrania i GPU.':'Praca na GPU może potrwać kilka–kilkadziesiąt minut. Zostaw aplikację uruchomioną.';}
+function renderProject(project, fresh=false){
+    const changed=selected?.id!==project.id;selected=project;localStorage.setItem('studio-project',project.id);
+    visible('dropzone',false);visible('upload-state',false);visible('source-info',true);visible('new-project',true);
+    $('filename').textContent=project.sourceName||project.name;$('file-extra').textContent=`${bytes(project.metadata?.bytes)} · ${new Date(project.createdAt).toLocaleDateString('pl-PL')}`;
+    const m=project.metadata;$('metadata').innerHTML=m?`<div><span>ROZDZIELCZOŚĆ</span><strong>${m.width} × ${m.height}</strong></div><div><span>CZAS</span><strong>${duration(m.duration)}</strong></div><div><span>KLATKI / S</span><strong>${Math.round(m.fps*100)/100}</strong></div>`:'<p class="muted">Brak poprawnych danych filmu. Dodaj inny plik.</p>';
+    if(changed||fresh){$('camera-mode').value=project.mode||m?.suggestedMode||'auto';choosePreset(project.preset||preset);}
+    modeNote();
+    const busy=['processing','cancelling'].includes(project.state),ready=project.state==='ready';$('source-preview').classList.toggle('is-processing',busy);
+    if(changed||fresh)configuring=false;
+    visible('setup-panel',!busy&&(!ready||configuring));visible('processing-panel',busy);visible('result-panel',ready&&!configuring);visible('logs',project.attempt>0);visible('error-box',Boolean(project.error));
+    $('camera-mode').disabled=busy;document.querySelectorAll('[data-preset]').forEach(b=>b.disabled=busy);
+    if(project.error){$('error-title').textContent=project.state==='cancelled'?'Przetwarzanie anulowane':project.state==='interrupted'?'Praca została przerwana':'Projekt wymaga uwagi';$('error-message').textContent=project.error;}
+    if(busy){$('processing-title').textContent=project.state==='cancelling'?'Zatrzymujemy zadanie…':'Odtwarzamy przestrzeń';$('current-stage').textContent=stages[project.stage];$('native-percent').textContent=project.progress===null?'':project.progress+'%';if(project.progress===null)$('native-progress').removeAttribute('value');else $('native-progress').value=project.progress;$('cancel-job').disabled=project.state==='cancelling';$('stages').innerHTML=stages.map((s,i)=>`<li class="${i<project.stage?'done':i===project.stage?'current':''}"><span>${i<project.stage?'✓':String(i+1).padStart(2,'0')}</span>${s}</li>`).join('');}
+    if(ready){$('result-summary').textContent=`${project.registeredCameras||'—'} pozycji kamer · ${bytes(project.output.bytes)} SOG`;$('output-size').textContent=`${bytes(project.output.bytes)} · otwarty format Gaussian Splat`;$('download-sog').href=`/api/projects/${project.id}/sog?download=1`;$('download-ply').href=`/api/projects/${project.id}/ply`;visible('export-bar',true);const key=project.id+':'+project.attempt;if(viewerKey!==key)loadViewer(key,`/api/projects/${project.id}/sog`,`/api/projects/${project.id}/settings`,project.name,false);}
+    else {visible('export-bar',false);if(changed||fresh||viewerKey){clearViewer();visible('preview-empty',false);visible('source-preview',true);$('source-poster').src=`/api/projects/${project.id}/poster`;}$('preview-title').textContent=project.name;$('preview-badge').textContent=busy?'PRZETWARZANIE':'FILM ŹRÓDŁOWY';$('source-preview-title').textContent=busy?'Z klatek powstaje przestrzeń.':'Zaraz nabierze głębi.';}
+    $('download-log').href=`/api/projects/${project.id}/logfile`;setStart();updateElapsed();
+}
+function modeNote(){const mode=$('camera-mode').value;const text={fisheye:'Dwie soczewki w jednym INSV. Telemetrię oceni silnik podczas rekonstrukcji.',equirect:'Pełna panorama 360° w proporcji 2:1, bez reframingu i cięć.',perspective:'Zwykła kamera. Dla eksportu 360° 2:1 wybierz „Panorama 360°”.',auto:'INSV: dwie soczewki. MP4/MOV: tryb 360° tylko przy wykrytym oznaczeniu panoramy.'};$('mode-note').textContent=text[mode];}
+$('camera-mode').onchange=modeNote;
+async function uploadFile(file){
+    if(!file||upload)return;
+    if(!/\.(insv|mp4|mov)$/i.test(file.name))return toast('Wybierz film INSV, MP4 lub MOV.');
+    if(file.size>20*1024**3||file.size===0)return toast('Wybierz niepusty plik do 20 GB.');
+    if(!token)return toast('Poczekaj na połączenie z lokalnym serwerem.');
+    reset();visible('dropzone',false);visible('upload-state',true);$('upload-name').textContent=file.name;$('upload-progress').value=0;$('upload-label').textContent='Dodawanie filmu · 0%';
+    const xhr=new XMLHttpRequest();upload=xhr;setStart();xhr.open('POST','/api/upload?name='+encodeURIComponent(file.name));xhr.setRequestHeader('X-Studio-Token',token);xhr.setRequestHeader('Content-Type','application/octet-stream');
+    xhr.upload.onprogress=e=>{if(e.lengthComputable){const p=Math.round(100*e.loaded/e.total);$('upload-progress').value=p;$('upload-label').textContent=p===100?'Odczyt parametrów filmu…':`Dodawanie filmu · ${p}%`;}};
+    xhr.onload=()=>{upload=null;try{const data=JSON.parse(xhr.responseText);if(xhr.status>=400){if(data.project)renderProject(data.project,true);else reset();toast(data.error);}else{renderProject(data,true);toast('Film dodany. Wybierz jakość i utwórz przestrzeń.');}poll();}catch{reset();toast('Serwer zwrócił nieprawidłową odpowiedź. Sprawdź, czy aplikacja działa.');}setStart();};
+    xhr.onerror=()=>{upload=null;reset();toast('Utracono połączenie podczas dodawania filmu. Spróbuj ponownie.');};xhr.onabort=()=>{upload=null;reset();toast('Dodawanie filmu anulowane.');};xhr.send(file);
+}
+$('dropzone').onclick=()=>$('file').click();$('file').onchange=e=>uploadFile(e.target.files[0]);$('cancel-upload').onclick=()=>upload?.abort();
+for(const event of ['dragenter','dragover'])$('dropzone').addEventListener(event,e=>{e.preventDefault();$('dropzone').classList.add('drag');});
+for(const event of ['dragleave','drop'])$('dropzone').addEventListener(event,e=>{e.preventDefault();$('dropzone').classList.remove('drag');if(event==='drop')uploadFile(e.dataTransfer.files[0]);});
+window.addEventListener('dragover',e=>e.preventDefault());window.addEventListener('drop',e=>e.preventDefault());
+$('start').onclick=async()=>{if(!selected)return;$('start').disabled=true;try{const p=await api(`/api/projects/${selected.id}/start`,{preset,mode:$('camera-mode').value});health.busy=p.id;renderProject(p,true);}catch(e){toast(e.message);setStart();}};
+$('cancel-job').onclick=async()=>{if(!selected)return;$('cancel-job').disabled=true;try{await api(`/api/projects/${selected.id}/cancel`,{});await poll();}catch(e){toast(e.message);$('cancel-job').disabled=false;}};
+$('reprocess').onclick=()=>{configuring=true;visible('result-panel',false);visible('setup-panel',true);$('setup-panel').scrollIntoView({behavior:'smooth',block:'center'});};
+async function loadViewer(key,contentUrl,settingsUrl,name,demo){
+    clearViewer();viewerKey=key;const generation=viewerGeneration;visible('preview-empty',false);visible('source-preview',false);visible('viewer-loading',true);$('viewer-percent').textContent='';$('preview-title').textContent=name;$('preview-badge').textContent=demo?'TEST SYNTETYCZNY':'INTERAKTYWNE 3D';
+    try{
+        const {createViewer}=await import('/viewer/index.js');if(generation!==viewerGeneration)return;
+        const settings=await fetch(settingsUrl).then(r=>{if(!r.ok)throw new Error('Brak ustawień sceny.');return r.json();});
+        const handle=await createViewer({container:$('viewer'),contentUrl,contentFilename:'scene.sog',settings,ui:false,noanim:true,lang:'en'});
+        if(generation!==viewerGeneration){handle.destroy();return;}viewer=handle;
+        const ready=()=>{if(generation!==viewerGeneration)return;clearTimeout(loadTimer);visible('viewer-loading',false);disableTools(false);visible('quality-row',true);handle.frameScene();handle.state.cameraMode='orbit';handle.state.animationPaused=true;handle.state.inputEnabled=page==='studio';$('performance').checked=handle.state.performanceMode;cameraButtons('orbit');};
+        const loadTimer=setTimeout(()=>{if(generation===viewerGeneration&&!handle.state.loaded){visible('viewer-loading',false);toast('Scena nie została jeszcze wyrenderowana. Sprawdź akcelerację sprzętową przeglądarki lub otwórz projekt ponownie.');}},90000);
+        handle.app.assets.on('error',error=>{if(generation===viewerGeneration){clearTimeout(loadTimer);visible('viewer-loading',false);toast('Błąd ładowania sceny: '+String(error));}});
+        handle.events.on('progress:changed',p=>{if(generation===viewerGeneration)$('viewer-percent').textContent=Math.round(p)+'%';});
+        handle.events.on('cameraMode:changed',cameraButtons);
+        if(handle.state.loaded)ready();else handle.events.once('loaded:changed',ready);
+    }catch(e){if(generation===viewerGeneration){visible('viewer-loading',false);visible('preview-empty',true);toast('Nie udało się otworzyć podglądu: '+e.message);}}
+}
+function cameraButtons(mode){$('orbit').classList.toggle('active',mode==='orbit');$('fly').classList.toggle('active',mode==='fly');$('controls-hint').textContent=mode==='fly'?'PRZYTRZYMAJ PRAWY PRZYCISK + WASD · Q / E W GÓRĘ I W DÓŁ':'PRZECIĄGNIJ, ABY OBRACAĆ · KÓŁKO, ABY PRZYBLIŻAĆ';}
+$('orbit').onclick=()=>{if(viewer?.state.loaded)viewer.state.cameraMode='orbit';};$('fly').onclick=()=>{if(viewer?.state.loaded){viewer.state.cameraMode='fly';viewer.state.gamingControls=false;toast('Swobodny lot: przytrzymaj prawy przycisk myszy i użyj WASD.');}};
+$('frame').onclick=()=>viewer?.frameScene();$('reset').onclick=()=>viewer?.resetCamera();$('fullscreen').onclick=()=>{$('preview-area').requestFullscreen().catch(e=>toast(e.message));};$('performance').onchange=()=>{if(viewer)viewer.state.performanceMode=$('performance').checked;};
+document.addEventListener('focusin',e=>{if(viewer)viewer.state.inputEnabled=page==='studio'&&!e.target.matches('input,select,textarea');});
+$('demo').onclick=()=>loadViewer('demo','/demo/scene.sog','/demo/settings.json','Przykład sterowania · scena syntetyczna',true);
+$('source-poster').onerror=()=>{$('source-poster').style.opacity='0';};$('source-poster').onload=()=>{$('source-poster').style.opacity='.55';};
+function renderLibrary(){const list=projects.filter(p=>Boolean(p.archived)===$('show-archived').checked);const signature=JSON.stringify([$('show-archived').checked,list.map(p=>[p.id,p.state,p.attempt,p.name,p.output?.bytes])]);if(signature===librarySignature)return;librarySignature=signature;$('library-summary').textContent=`${list.length} ${list.length===1?'projekt':'projektów'} · przechowywane lokalnie`;$('projects').innerHTML=list.length?list.map(p=>`<article class="project-card"><div class="project-image"><img src="/api/projects/${p.id}/poster" alt="Klatka z projektu" loading="lazy"><span class="badge">${escape(stateNames[p.state]||p.state)}</span></div><div class="project-body"><h2>${escape(p.name)}</h2><p>${new Date(p.createdAt).toLocaleDateString('pl-PL')} · ${p.metadata?duration(p.metadata.duration):'Brak metadanych'} · ${p.output?bytes(p.output.bytes)+' SOG':bytes(p.metadata?.bytes)}</p><div class="project-actions"><button class="secondary" data-open="${p.id}">${p.state==='ready'?'Otwórz przestrzeń':'Otwórz projekt'} ↗</button><button class="text-button" data-archive="${p.id}">${p.archived?'Przywróć':'Archiwizuj'}</button></div></div></article>`).join(''):`<div class="empty-library"><h2>${$('show-archived').checked?'Archiwum jest puste.':'Tu zaczną się Twoje przestrzenie.'}</h2><p>Dodaj pierwszy film i wróć do niego w dowolnej chwili.</p><button class="secondary" id="empty-new">+ Dodaj film</button></div>`;
+    $('projects').querySelectorAll('img').forEach(img=>img.onerror=()=>img.style.visibility='hidden');
+    $('projects').querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>{renderProject(projects.find(p=>p.id===b.dataset.open),true);showPage('studio');});
+    $('projects').querySelectorAll('[data-archive]').forEach(b=>b.onclick=async()=>{try{await api(`/api/projects/${b.dataset.archive}/archive`,{});await poll();renderLibrary();}catch(e){toast(e.message);}});
+    if($('empty-new'))$('empty-new').onclick=reset;
+}
+$('show-archived').onchange=renderLibrary;
+async function loadLogs(){if(selected?.attempt&&$('logs').open){try{$('log-text').textContent=(await api(`/api/projects/${selected.id}/logs`)).text;$('log-text').scrollTop=$('log-text').scrollHeight;}catch(e){$('log-text').textContent=e.message;}}}
+$('logs').ontoggle=loadLogs;
+function updateElapsed(){if(selected?.startedAt){const end=selected.finishedAt?Date.parse(selected.finishedAt):Date.now();$('elapsed').textContent=duration(Math.max(0,(end-Date.parse(selected.startedAt))/1000));}}
+async function poll(){if(polling)return;polling=true;try{const [h,list]=await Promise.all([api('/api/health'),api('/api/projects')]);health=h;token=h.token;projects=list;$('project-count').textContent=projects.filter(p=>!p.archived).length;$('engine-label').textContent=h.ready?'Silnik gotowy do pracy':h.engine;$('gpu-label').textContent=h.ready?h.gpu.replace(/^\d+\s+/, '').replace(/\s+uuid:.*/, '').replace('discrete', '·'):h.engine;$('engine-dot').style.background=h.ready?'#acdabb':'#dda894';choosePreset(preset);if(selected){const p=list.find(p=>p.id===selected.id);if(p)renderProject(p);}else if(!upload&&!poll.restored){poll.restored=true;const saved=localStorage.getItem('studio-project');const p=list.find(p=>p.id===saved&&!p.archived);if(p)renderProject(p,true);}if(page==='library')renderLibrary();setStart();await loadLogs();}catch{$('engine-label').textContent='Brak połączenia z aplikacją';$('gpu-label').textContent='Uruchom START-STUDIO.cmd. Ponowimy połączenie automatycznie.';health.ready=false;setStart();}finally{polling=false;}}
+setInterval(poll,1800);setInterval(()=>{updateElapsed();if(viewer?.state.loaded){const fps=viewer.app.stats?.frame?.fps;$('fps').textContent=Number.isFinite(fps)&&fps>0?Math.round(fps)+' FPS':'';}},1000);poll();
+
+api('/api/demo').then(({available})=>{visible('demo',available);const note=$('demo').nextElementSibling;if(note)note.hidden=!available;}).catch(()=>visible('demo',false));
