@@ -15,6 +15,7 @@ export class ProjectStore {
         return this.save(project);
     }
     recover() {
+        for(const project of this.list())if(['processing','cancelling'].includes(project.cleanup?.status)){project.cleanup.status='interrupted';project.cleanup.error='Czyszczenie przerwano przy zamknięciu aplikacji. Poprzednia scena jest zachowana.';this.save(project);}
         for (const project of this.list()) if (['uploading','processing','cancelling'].includes(project.state)) {
             project.state = 'interrupted'; project.error = 'Aplikacja została zamknięta podczas pracy. Możesz ponowić zadanie lub wgrać film ponownie.'; project.finishedAt = new Date().toISOString(); this.save(project);
         }

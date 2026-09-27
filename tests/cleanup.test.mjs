@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtempSync,writeFileSync,rmSync} from 'node:fs';
+import {join} from 'node:path';
+import {tmpdir} from 'node:os';
+import {cleanupArgs,plyCount} from '../services/scene-cleanup.mjs';
+import {ProjectStore} from '../services/project-manager/index.mjs';
+test('cleanup uses linear opacity, rejects unknown strength and keeps rotation out of intermediate PLY',()=>{const args=cleanupArgs('original.ply','clean.ply','balanced');assert.ok(args.includes('opacity,gt,0.12'));assert.ok(args.includes('--filter-floaters'));assert.equal(args.some(a=>a.includes('rotate')),false);assert.throws(()=>cleanupArgs('a','b','__proto__'));});
+test('reads PLY vertex counts and rejects invalid headers',()=>{const root=mkdtempSync(join(tmpdir(),'splat-clean-'));try{const path=join(root,'test.ply');writeFileSync(path,'ply\nformat binary_little_endian 1.0\nelement vertex 123\nend_header\n');assert.equal(plyCount(path),123);writeFileSync(path,'invalid');assert.throws(()=>plyCount(path));}finally{rmSync(root,{recursive:true,force:true});}});
+test('interrupted cleanup retains playable selected and original scene',()=>{const root=mkdtempSync(join(tmpdir(),'clean-recovery-'));try{const store=new ProjectStore(root),p=store.create('scene');p.state='ready';p.output={web:'1-clean'};p.originalOutput={web:'1'};p.cleanup={status:'processing'};store.save(p);store.recover();const result=store.get(p.id);assert.equal(result.state,'ready');assert.equal(result.output.web,'1-clean');assert.equal(result.originalOutput.web,'1');assert.equal(result.cleanup.status,'interrupted');}finally{rmSync(root,{recursive:true,force:true});}});

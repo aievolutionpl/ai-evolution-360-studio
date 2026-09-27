@@ -4,7 +4,7 @@
 **Nagraj miejsce kamerą Insta360. Zamień footage w interaktywną wizualizację 3D.**
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-9c78ff.svg)](LICENSE)
-![Status](https://img.shields.io/badge/status-experimental_v0.3-729cff)
+![Status](https://img.shields.io/badge/status-experimental_v0.3.1-729cff)
 ![Platform](https://img.shields.io/badge/platform-Windows_10%2F11-729cff)
 
 AI Evolution 360 Studio łączy nagranie wideo, rekonstrukcję Gaussian Splatting i podgląd 3D w jednym prostym interfejsie. Dodajesz film, wybierasz jakość, obserwujesz przetwarzanie, a potem rozglądasz się po odtworzonej przestrzeni i eksportujesz scenę.
@@ -114,3 +114,24 @@ Test end-to-end obejmuje syntetyczny pokój z 12 panoramami: upload, SfM 12/12,
 trening 3000 kroków, eksport SOG i lokalny podgląd. Jakość rzeczywistych zdjęć zależy
 od ostrości, paralaksy i wspólnych szczegółów; nie jest gwarantowana.
 Generator zestawu testowego: `python scripts/create-panorama-fixture.py` (NumPy, Pillow).
+
+## Czyszczenie mgiełki i luźnych splatów (v0.3.1)
+
+W gotowym projekcie otwórz **Czystsza przestrzeń**. Wybierz Delikatne, Standard
+lub Mocne i kliknij **Wyczyść scenę**. Nie trzeba ponownie trenować modelu.
+Filtr usuwa splaty o niskiej nieprzezroczystości i splaty bez istotnego wkładu
+w zajęte woksele (`splat-transform --filter-floaters`). Siła reguluje progi;
+nie jest to rozmycie obrazu ani generowanie brakujących powierzchni.
+
+Czyszczenie zawsze korzysta z oryginalnego PLY, tworzy osobne pliki PLY/SOG,
+i zachowuje ustawienia kamer. Przyciski **Oryginał / Po czyszczeniu** pozwalają
+porównać oba warianty z tej samej początkowej pozycji. Pobierany PLY/SOG odpowiada
+wybranemu wariantowi. Kolejna próba ponownie filtruje oryginał, więc usuwanie się
+nie kumuluje. Anulowanie, błąd lub przerwanie aplikacji zachowuje poprzedni wynik.
+
+Zacznij od delikatnego filtra. Mocniejszy może usuwać szkło, cienkie elementy,
+liście i prawidłowe półprzezroczyste detale; przejrzyj kilka pozycji kamery.
+Widoczne artefakty o wysokiej nieprzezroczystości mogą pozostać — automatyczny
+filtr nie zna prawdziwego wyglądu miejsca. W takich przypadkach potrzebne jest
+ręczne zaznaczanie w edytorze splatów albo lepszy materiał referencyjny.
+Operacja korzysta z lokalnego GPU, ma limit czasu i nie nadpisuje oryginału.
