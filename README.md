@@ -4,7 +4,7 @@
 **Nagraj miejsce kamerą Insta360. Zamień footage w interaktywną wizualizację 3D.**
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-9c78ff.svg)](LICENSE)
-![Status](https://img.shields.io/badge/status-experimental_v0.3.1-729cff)
+![Status](https://img.shields.io/badge/status-experimental_v0.3.2-729cff)
 ![Platform](https://img.shields.io/badge/platform-Windows_10%2F11-729cff)
 
 AI Evolution 360 Studio łączy nagranie wideo, rekonstrukcję Gaussian Splatting i podgląd 3D w jednym prostym interfejsie. Dodajesz film, wybierasz jakość, obserwujesz przetwarzanie, a potem rozglądasz się po odtworzonej przestrzeni i eksportujesz scenę.
@@ -99,9 +99,9 @@ Kod integracji udostępniamy na **GPL-3.0-only** — możesz go używać, analiz
 
 ## Zdjęcia 360° (v0.3)
 
-Wybierz **Zdjęcia 360°** i dodaj jednocześnie jeden lub kilka plików JPG/PNG.
+Wybierz **Zdjęcia 360°** i dodaj jednocześnie jeden lub kilka plików INSP/JPG/PNG.
 Eksportuj pełną, zszytą panoramę **equirectangular 2:1** z Insta360 Studio
-(np. 7680 × 3840). Surowe INSP oraz obrazy dwóch kół fisheye wymagają wcześniejszego eksportu.
+(np. 7680 × 3840). Możesz też dodać bezpośrednio INSP z dwoma obiektywami obok siebie. Studio rozdziela obiektywy do rekonstrukcji, bez zszywania danych treningowych. Podgląd INSP to przybliżona projekcja sferyczna bez kalibracji producenta; szew i horyzont mogą być niedokładne. Nie mieszaj INSP i zszytych JPG/PNG w jednym zestawie.
 
 - **1–2 zdjęcia:** interaktywny podgląd panoram, obracanie i przybliżanie. To podgląd sferyczny, bez odtworzonej głębi.
 - **3 lub więcej:** rekonstrukcja wspólnej przestrzeni przez Spirula SfM i Gaussian Splatting. Zalecamy **12–30 zdjęć** z różnych pozycji, ze wspólnymi detalami. Wynik można wyeksportować jako SOG lub PLY.
@@ -135,3 +135,19 @@ Widoczne artefakty o wysokiej nieprzezroczystości mogą pozostać — automatyc
 filtr nie zna prawdziwego wyglądu miejsca. W takich przypadkach potrzebne jest
 ręczne zaznaczanie w edytorze splatów albo lepszy materiał referencyjny.
 Operacja korzysta z lokalnego GPU, ma limit czasu i nie nadpisuje oryginału.
+
+
+### Bezpośredni import INSP (v0.3.2)
+
+Testowano oryginalne INSP 11904 × 5952 z kamery Insta360: oba pliki
+są kopiowane bez zmiany bajtów i odczytywane jako dwa obiektywy, a nie panorama 2:1.
+Rekonstrukcja używa osobnych obrazów cam0/cam1, modelu thin-prism-fisheye i rigu
+dual-fisheye. Początkowa ogniskowa jest przybliżonym założeniem szerokokątnym,
+potem optymalizowanym przez silnik; nie jest odczytaną kalibracją producenta.
+
+Pojedyncze zdjęcie i zestaw dwóch mają podgląd sferyczny. Potrzeba minimum 3
+różnych pozycji do uruchomienia 3D, zalecamy 12–30. W rzeczywistym teście
+dwa odległe ujęcia z poruszającymi się osobami nie dały wiarygodnej geometrii.
+Wyższy preset nie zastąpi brakujących ujęć. Przybliżony podgląd INSP może mieć
+widoczny szew i pochylenie; do wiernego, skalibrowanego podglądu eksportuj JPG 2:1
+z Insta360 Studio. Oryginalne INSP pozostają lokalnie i są zachowane.
