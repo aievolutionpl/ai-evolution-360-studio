@@ -5,6 +5,7 @@ import { Transform } from 'node:stream';
 import { dirname, join, resolve, extname, basename, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
+import { receivePhoto } from './photo-upload.mjs';
 import { cameraSettings } from './viewer-camera.mjs';
 import { ProjectStore, validId } from './project-manager/index.mjs';
 import { run, stopChild, trainingProgress } from './spirula-runner/index.mjs';
@@ -18,7 +19,7 @@ store.recover();
 const engine = ['toolchain/spirula-build-source/build_vulkan/spirula.exe','toolchain/spirula/spirula.exe'].map(p=>join(root,p)).find(existsSync);
 const presets = { fast: { frames:100, size:1280, iterations:3000, cap:150000, quality:'low' }, standard:{ frames:180,size:1600,iterations:10000,cap:400000,quality:'medium' }, max:{frames:300,size:1920,iterations:20000,cap:800000,quality:'high'} };
 let active = null, uploadBusy = false;
-const health = { product:'AI Evolution 360 Studio', version:'0.2.0', ready:false, engine:'Sprawdzanie silnika…', gpu:'Sprawdzanie GPU…' };
+const health = { product:'AI Evolution 360 Studio', version:'0.3.0', ready:false, engine:'Sprawdzanie silnika…', gpu:'Sprawdzanie GPU…' };
 if (engine) Promise.all([run(engine,['--help'],{timeout:15000}),run(engine,['sam','devices'],{timeout:15000}),run('ffprobe',['-version'],{timeout:15000}),run('ffmpeg',['-version'],{timeout:15000})]).then(([version,gpu])=>Object.assign(health,{ready:true,engine:version.split('\n')[0],gpu:gpu.split('\n').find(l=>/NVIDIA|AMD|Intel/.test(l))?.replace(/\s+/g,' ').trim() || 'Vulkan'})).catch(e=>Object.assign(health,{ready:false,engine:e.message}));
 else health.engine = 'Nie znaleziono Spirula. Sprawdź toolchain.';
 
@@ -53,9 +54,11 @@ async function probe(project) {
 async function processProject(project, options) {
     if(active)throw new Error('Inny projekt jest przetwarzany. Poczekaj lub anuluj go.');
     if(!health.ready)throw new Error('Silnik nie jest gotowy.');
-    if(!project.metadata||!existsSync(project.sourcePath||''))throw new Error('Wgraj film ponownie.');
+    const photos=project.kind==='photos';
+    if(photos&&(!project.uploadComplete||project.photos?.length<3))throw new Error('Rekonstrukcja 3D wymaga co najmniej 3 kompletnych panoram z różnych pozycji. Zalecamy 12–30. Jedno lub dwa zdjęcia otworzysz jako panoramy.');
+    if(!project.metadata||!existsSync(project.sourcePath||''))throw new Error('Dodaj materiał ponownie.');
     const preset=presets[options.preset];if(!preset)throw new Error('Nieprawidłowy preset.');
-    const mode=options.mode==='auto'?project.metadata.suggestedMode:options.mode;
+    const mode=photos?'equirect':options.mode==='auto'?project.metadata.suggestedMode:options.mode;
     if(!['fisheye','equirect','perspective'].includes(mode))throw new Error('Wybierz typ nagrania.');
     if(mode==='fisheye'&&project.metadata.streams!==2)throw new Error('Ten tryb wymaga dwóch strumieni w jednym INSV. Dla plików rozdzielonych wyeksportuj panoramę 360° 2:1 w Insta360 Studio i wybierz „Panorama 360°”.');
     if(mode==='equirect'&&Math.abs(project.metadata.width/project.metadata.height-2)>.05)throw new Error('Panorama 360° powinna mieć proporcje 2:1. Sprawdź eksport i wybrany typ materiału.');
@@ -71,27 +74,37 @@ async function processProject(project, options) {
     const command=(exe,args)=>run(exe,args,{log,onLine,job});
     (async()=>{
         try {
-            await command(engine,['sam','video','--info',project.sourcePath]);
-            stage(1);
-            const skip=Math.max(1,Math.ceil(project.metadata.fps/2),Math.ceil(project.metadata.frames/preset.frames));
-            const scale=Math.min(1,preset.size/project.metadata.width);
             const images=join(dataset,'images');
-            await command(engine,['sam','extract',project.sourcePath,'-o',images,'--skip',String(skip),'--max-frames',String(preset.frames),'--scale',String(scale),'--sync','--adaptive']);
+            if(photos){
+                stage(1);mkdirSync(images,{recursive:true});
+                for(let i=0;i<project.photos.length;i++){
+                    const photo=project.photos[i];
+                    await command('ffmpeg',['-v','error','-i',join(project.sourcePath,photo.file),'-frames:v','1','-vf',`scale=${Math.min(3840,preset.size*2)}:-2`,'-q:v','2','-y',join(images,`${String(i).padStart(4,'0')}.jpg`)]);
+                }
+            }else{
+                await command(engine,['sam','video','--info',project.sourcePath]);
+                stage(1);
+                const skip=Math.max(1,Math.ceil(project.metadata.fps/2),Math.ceil(project.metadata.frames/preset.frames));
+                const scale=Math.min(1,preset.size/project.metadata.width);
+                await command(engine,['sam','extract',project.sourcePath,'-o',images,'--skip',String(skip),'--max-frames',String(preset.frames),'--scale',String(scale),'--sync','--adaptive']);
+            }
             stage(2);
             const groups=readdirSync(images,{withFileTypes:true}).filter(e=>e.isDirectory()).map(e=>e.name).sort();
             const cameras=(groups.length?groups:['']).map(prefix=>({prefix,model:mode==='fisheye'?'thin-prism-fisheye':mode==='equirect'?'equirectangular':'opencv'}));
             const manifest={image_dir:images, camera_mode:groups.length?'folder':'single',cameras,captures:cameras.map(c=>({prefix:c.prefix,telemetry:project.sourcePath,fps:project.metadata.fps})),sequences:[{members:groups.length?groups:['.']}]};
+            if(photos){delete manifest.captures;delete manifest.sequences;}
             if(mode==='fisheye'){if(groups.length!==2)throw new Error('Nie uzyskano obu soczewek. Sprawdź log ekstrakcji.');manifest.rigs=[{name:'Insta360',kind:'dual-fisheye',members:groups}];}
             writeFileSync(join(dataset,'manifest.json'),JSON.stringify(manifest,null,2));
             stage(3);
-            await command(engine,['sfm','auto',images,'-o',recon,'--manifest',join(dataset,'manifest.json'),'--data-type','video','--quality',preset.quality]);
+            await command(engine,['sfm','auto',images,'-o',recon,'--manifest',join(dataset,'manifest.json'),'--data-type',photos?'individual':'video','--quality',preset.quality]);
             const sparse=join(recon,'sparse','0');
             const points=join(sparse,'points3D.bin');
             if(!existsSync(points)||statSync(points).size<=8)throw new Error('Nie udało się odtworzyć geometrii. Nagraj spokojny spacer ze zmianą pozycji i większą liczbą szczegółów.');
             const registered=join(sparse,'images.bin');
             if(existsSync(registered)){const count=Number(readFileSync(registered).readBigUInt64LE(0));project.registeredCameras=count;if(count<3)throw new Error('Za mało odtworzonych pozycji kamery. Potrzeba ruchu z paralaksą i wyraźnych detali.');}
+            if(photos&&project.registeredCameras!==project.photos.length)throw new Error(`Połączono tylko ${project.registeredCameras} z ${project.photos.length} panoram. Dodaj zdjęcia pośrednie ze wspólnymi detalami; nie wszystkie zdjęcia tworzą jedną przestrzeń.`);
             stage(4);
-            await command(engine,['train',mode==='fisheye'?'360-camera':'3dgs','--data',dataset,'--data-format','colmap','--colmap-recon-dir',sparse,'--output-dir-prefix',splat,'--output-dir-name','run','--num-iterations',String(preset.iterations),'--cap-max',String(preset.cap),'--disable-viewer','1','--keep-viewer-alive','0']);
+            await command(engine,['train',mode==='fisheye'||mode==='equirect'?'360-camera':'3dgs','--data',dataset,'--data-format','colmap','--colmap-recon-dir',sparse,'--output-dir-prefix',splat,'--output-dir-name','run','--num-iterations',String(preset.iterations),'--cap-max',String(preset.cap),'--disable-viewer','1','--keep-viewer-alive','0']);
             const runs=join(splat,'run');const checkpoints=readdirSync(runs).filter(n=>/^step-\d+\.ckpt$/.test(n)).sort();
             if(!checkpoints.length)throw new Error('Silnik nie zapisał checkpointu.');
             const ply=join(runs,checkpoints.at(-1),'splat.ply');if(!existsSync(ply)||statSync(ply).size<100)throw new Error('Brak poprawnego PLY.');
@@ -118,6 +131,13 @@ const server=http.createServer(async(req,res)=>{
         if(path==='/api/health')return json(res,{...health,token,busy:active?.id||null,presets});
         if(path==='/api/shutdown'&&req.method==='POST'){json(res,{ok:true});setTimeout(shutdown,100);return;}
         if(path==='/api/projects'&&req.method==='GET')return json(res,store.list().map(publicProject));
+        if(path==='/api/photos'&&req.method==='POST'){
+            const data=await body(req);
+            if(!Number.isInteger(data.count)||data.count<1||data.count>100)throw new Error('Dodaj od 1 do 100 zdjęć.');
+            const project=store.create(typeof data.name==='string'?data.name:'Zdjęcia 360');
+            project.kind='photos';project.photos=[];project.expectedPhotos=data.count;project.sourcePath=join(store.path(project.id),'source','photos');store.save(project);
+            return json(res,publicProject(project),201);
+        }
         if(path==='/api/upload'&&req.method==='POST'){
             if(uploadBusy)return json(res,{error:'Trwa przesyłanie innego pliku.'},409);
             const name=basename(url.searchParams.get('name')||'video.mp4');const extension=extname(name).toLowerCase();
@@ -135,6 +155,25 @@ const server=http.createServer(async(req,res)=>{
         const match=path.match(/^\/api\/projects\/([a-f0-9-]+)(?:\/(\w+))?$/);
         if(match){const [,id,action]=match;if(!validId(id)||!existsSync(join(store.path(id),'project.json')))return json(res,{error:'Nie znaleziono projektu.'},404);const project=store.get(id);
             if(!action&&req.method==='GET')return json(res,publicProject(project));
+            if(action==='photo'&&req.method==='POST'){
+                if(uploadBusy)throw new Error('Trwa przesyłanie innego pliku.');uploadBusy=true;
+                try{return json(res,publicProject(await receivePhoto(req,project,store,url.searchParams.get('name')||'')),201);}finally{uploadBusy=false;}
+            }
+            if(action==='finishphotos'&&req.method==='POST'){
+                if(project.kind!=='photos'||project.state!=='uploading'||project.photos.length!==project.expectedPhotos)throw new Error('Nie przesłano wszystkich zdjęć. Dodaj zestaw ponownie.');
+                project.uploadComplete=true;project.state=project.photos.length<3?'panorama':'uploaded';project.mode='equirect';project.sourceName=`${project.photos.length} zdjęć 360°`;
+                project.metadata={width:project.photos[0].width,height:project.photos[0].height,bytes:project.photos.reduce((s,p)=>s+p.bytes,0),suggestedMode:'equirect',count:project.photos.length};
+                return json(res,publicProject(store.save(project)));
+            }
+            if(action==='abortphotos'&&req.method==='POST'){
+                if(project.kind!=='photos'||project.state!=='uploading')throw new Error('Sesja jest zamknięta.');
+                project.state='cancelled';project.error='Nieukończony zestaw zdjęć. Dodaj komplet ponownie.';return json(res,publicProject(store.save(project)));
+            }
+            if(action==='panorama'&&req.method==='GET'){
+                const i=Number(url.searchParams.get('index')||0);
+                if(project.kind!=='photos'||!Number.isInteger(i)||!project.photos[i])throw new Error('Nie znaleziono panoramy.');
+                return asset(res,req,join(store.path(id),'source','photos',project.photos[i].preview));
+            }
             if(action==='start'&&req.method==='POST')return json(res,publicProject(await processProject(project,await body(req))),202);
             if(action==='cancel'&&req.method==='POST'){if(active?.id!==id)return json(res,{error:'Projekt nie jest przetwarzany.'},409);active.cancelled=true;project.state='cancelling';store.save(project);stopChild(active.child);return json(res,{ok:true});}
             if(action==='archive'&&req.method==='POST'){if(active?.id===id)return json(res,{error:'Najpierw zakończ zadanie.'},409);project.archived=!project.archived;store.save(project);return json(res,publicProject(project));}
@@ -148,6 +187,7 @@ const server=http.createServer(async(req,res)=>{
         }
         if(path==='/api/demo'&&req.method==='GET')return json(res,{available:existsSync(join(root,'workspace/source-export/scene.sog'))});
         if(path.startsWith('/demo/')){const name=path.slice(6);if(!['scene.sog','settings.json'].includes(name)){res.writeHead(404);return res.end();}return asset(res,req,join(root,'workspace/source-export',name));}
+        if(path.startsWith('/panorama-lib/')){const file=path.slice(14);if(!['pannellum.js','pannellum.css'].includes(file)){res.writeHead(404);return res.end();}return asset(res,req,join(root,'vendor/panorama/node_modules/pannellum/build',file));}
         if(path.startsWith('/viewer/'))return asset(res,req,safePath(join(root,'vendor/supersplat-viewer/public'),decodeURIComponent(path.slice(8))));
         if(path.startsWith('/api/'))return json(res,{error:'Nieznana operacja.'},404);
         return asset(res,req,safePath(join(root,'apps/desktop'),path==='/'?'index.html':decodeURIComponent(path.slice(1))));

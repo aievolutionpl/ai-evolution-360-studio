@@ -4,7 +4,7 @@
 **Nagraj miejsce kamerą Insta360. Zamień footage w interaktywną wizualizację 3D.**
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-9c78ff.svg)](LICENSE)
-![Status](https://img.shields.io/badge/status-experimental_v0.2-729cff)
+![Status](https://img.shields.io/badge/status-experimental_v0.3-729cff)
 ![Platform](https://img.shields.io/badge/platform-Windows_10%2F11-729cff)
 
 AI Evolution 360 Studio łączy nagranie wideo, rekonstrukcję Gaussian Splatting i podgląd 3D w jednym prostym interfejsie. Dodajesz film, wybierasz jakość, obserwujesz przetwarzanie, a potem rozglądasz się po odtworzonej przestrzeni i eksportujesz scenę.
@@ -96,3 +96,21 @@ Kod integracji udostępniamy na **GPL-3.0-only** — możesz go używać, analiz
 ---
 
 **English:** An experimental local video-to-3D studio by AI Evolution Polska. Designed for Insta360 footage, stitched 360° panoramas and conventional video. Powered by Spirula Studio for reconstruction and PlayCanvas for conversion and viewing. Includes upload, progress visualization, projects and SOG/PLY export. Windows-focused; synthetic-video end-to-end testing completed, one real dual-fisheye INSV verified; broader X4/X5 compatibility pending. GPL-3.0-only.
+
+## Zdjęcia 360° (v0.3)
+
+Wybierz **Zdjęcia 360°** i dodaj jednocześnie jeden lub kilka plików JPG/PNG.
+Eksportuj pełną, zszytą panoramę **equirectangular 2:1** z Insta360 Studio
+(np. 7680 × 3840). Surowe INSP oraz obrazy dwóch kół fisheye wymagają wcześniejszego eksportu.
+
+- **1–2 zdjęcia:** interaktywny podgląd panoram, obracanie i przybliżanie. To podgląd sferyczny, bez odtworzonej głębi.
+- **3 lub więcej:** rekonstrukcja wspólnej przestrzeni przez Spirula SfM i Gaussian Splatting. Zalecamy **12–30 zdjęć** z różnych pozycji, ze wspólnymi detalami. Wynik można wyeksportować jako SOG lub PLY.
+- Przesuwaj kamerę o około 30–80 cm. Zachowuj nieruchomą scenę i stałe światło. Dodaj zdjęcia pośrednie w drzwiach i korytarzach; niepowiązane pomieszczenia nie połączą się automatycznie.
+- Limit: **100 zdjęć, 100 MB na zdjęcie, 5 GB na zestaw**. Całość pozostaje lokalna.
+- Zestaw jest zatwierdzany dopiero po odczytaniu wszystkich plików. Rekonstrukcja wymaga rejestracji wszystkich dodanych panoram; częściowy wynik daje komunikat o brakujących połączeniach.
+
+Podgląd panoram korzysta z Pannellum 2.5.6 (MIT), instalowanego przez `scripts/Setup-Studio.ps1`.
+Test end-to-end obejmuje syntetyczny pokój z 12 panoramami: upload, SfM 12/12,
+trening 3000 kroków, eksport SOG i lokalny podgląd. Jakość rzeczywistych zdjęć zależy
+od ostrości, paralaksy i wspólnych szczegółów; nie jest gwarantowana.
+Generator zestawu testowego: `python scripts/create-panorama-fixture.py` (NumPy, Pillow).

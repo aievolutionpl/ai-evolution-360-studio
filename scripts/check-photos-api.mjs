@@ -1,0 +1,24 @@
+import assert from 'node:assert/strict';
+import {readFileSync,writeFileSync} from 'node:fs';
+const base='http://127.0.0.1:8765';const {token}=await fetch(base+'/api/health').then(r=>r.json());const headers={'X-Studio-Token':token,'Content-Type':'application/json'};
+async function post(path,body={}){return fetch(base+path,{method:'POST',headers,body:JSON.stringify(body)});}
+assert.equal((await post('/api/photos',{count:101})).status,400);
+const p=await (await post('/api/photos',{name:'QA photo validation',count:2})).json();
+assert.equal((await post(`/api/projects/${p.id}/finishphotos`)).status,400);
+const corrupt=await fetch(`${base}/api/projects/${p.id}/photo?name=bad.jpg`,{method:'POST',headers:{'X-Studio-Token':token},body:'not a photo'});assert.equal(corrupt.status,400);
+const f=readFileSync('workspace/qa-fixtures/panoramas/panorama-00.jpg');
+assert.equal((await fetch(`${base}/api/projects/${p.id}/photo?name=test.jpg`,{method:'POST',headers:{'X-Studio-Token':token},body:f})).status,201);
+assert.equal((await post(`/api/projects/${p.id}/finishphotos`)).status,400);
+await post(`/api/projects/${p.id}/abortphotos`);
+assert.equal((await fetch(`${base}/api/projects/${p.id}/photo?name=test.jpg`,{method:'POST',headers:{'X-Studio-Token':token},body:f})).status,400);
+await post(`/api/projects/${p.id}/archive`);
+const q=await (await post('/api/photos',{name:'QA single panorama',count:1})).json();
+assert.equal((await fetch(`${base}/api/projects/${q.id}/photo?name=test.jpg`,{method:'POST',headers:{'X-Studio-Token':token},body:f})).status,201);
+assert.equal((await (await post(`/api/projects/${q.id}/finishphotos`)).json()).state,'panorama');
+assert.equal((await post(`/api/projects/${q.id}/start`,{preset:'fast',mode:'equirect'})).status,400);
+assert.equal((await fetch(`${base}/api/projects/${q.id}/panorama?index=0`)).headers.get('content-type'),'image/jpeg');
+assert.equal((await fetch(`${base}/api/projects/${q.id}/panorama?index=9`)).status,400);
+await post(`/api/projects/${q.id}/archive`);
+assert.equal((await fetch(base+'/panorama-lib/pannellum.js')).status,200);
+const report={passed:12,date:new Date().toISOString(),checks:'limits, corrupt input, partial set, cancellation, single panorama, minimum views, JPEG preview, index validation, library asset'};
+writeFileSync('docs/verification/photos-api.json',JSON.stringify(report,null,2));console.log(report);

@@ -10,7 +10,7 @@ const corrupt=await fetch(base+'/api/upload?name=qa-invalid.mp4',{method:'POST',
 assert.equal(corrupt.status,400);const bad=await corrupt.json();assert.equal(bad.project.state,'failed');
 await fetch(`${base}/api/projects/${bad.project.id}/archive`,{method:'POST',headers,body:'{}'});
 const projects=await fetch(base+'/api/projects').then(r=>r.json());
-const ready=projects.find(p=>p.state==='ready');assert.ok(ready,'Need successful integration project');
+const ready=projects.find(p=>p.state==='ready'&&p.kind!=='photos'&&Math.abs(p.metadata.width/p.metadata.height-2)>.05);assert.ok(ready,'Need successful integration project');
 const sog=await fetch(`${base}/api/projects/${ready.id}/sog`);assert.equal(sog.status,200);const data=Buffer.from(await sog.arrayBuffer());assert.equal(data.subarray(0,2).toString(),'PK');
 const range=await fetch(`${base}/api/projects/${ready.id}/sog`,{headers:{Range:'bytes=0-7'}});assert.equal(range.status,206);assert.equal((await range.arrayBuffer()).byteLength,8);
 const ply=await fetch(`${base}/api/projects/${ready.id}/ply`,{headers:{Range:'bytes=0-3'}});assert.equal(Buffer.from(await ply.arrayBuffer()).toString(),'ply\n');

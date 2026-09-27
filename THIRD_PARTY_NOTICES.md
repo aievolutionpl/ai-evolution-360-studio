@@ -13,3 +13,9 @@ Setup downloads Spirula v2026.9.24 from its official release. Source for that bi
 PlayCanvas dependencies retain their own licenses. Keep upstream licenses and notices when redistributing them. FFmpeg/ffprobe are external prerequisites; licensing depends on the installed build. No third-party executable or source is bundled here.
 
 Original integration code: Copyright (c) 2026 AI Evolution Polska, GPL-3.0-only; see LICENSE. Screenshots show our interface and synthetic QA content. Insta360 is a third-party trademark; this is an independent community project.
+
+## Pannellum
+- Source: https://github.com/mpetroff/pannellum
+- Version: 2.5.6 (npm)
+- License: MIT; bundled package includes its LICENSE.
+- Used locally for spherical 360 photo viewing, separate from Gaussian Splat reconstruction.

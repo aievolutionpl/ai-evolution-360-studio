@@ -25,6 +25,7 @@ foreach ($dep in $dependencies) {
     Push-Location $path
     try { Invoke-Checked npm @('ci'); Invoke-Checked npm @('run','build') } finally { Pop-Location }
 }
+Invoke-Checked npm @('install','--prefix',(Join-Path $root 'vendor/panorama'),'--save-exact','pannellum@2.5.6','--ignore-scripts','--no-audit','--no-fund')
 $engineDir = Join-Path $root 'toolchain/spirula'
 if (-not (Test-Path (Join-Path $engineDir 'spirula.exe'))) {
     New-Item -ItemType Directory -Force $engineDir | Out-Null
