@@ -196,20 +196,23 @@ wersji 1 z osadzonymi własnymi modelami. Nie renderuje SOG ani Gaussian Splat P
 4. Pobierz **projekt .forma.json**. W Designerze zapisz dotychczasową kompozycję,
    wybierz **Otwórz** i ten plik. Skan pojawi się na pustej działce, gotowy do
    zestawienia z modelami z biblioteki.
-5. Alternatywnie pobierz **environment GLB** i użyj **Dodaj własny model**.
-   Następnie kliknij + przy modelu w bibliotece, aby umieścić go w scenie.
+5. Aby dodać skan do bieżącej kompozycji, pobierz **environment GLB** i wybierz
+   **Dodaj environment → plik GLB → Importuj** w Designerze. Opcja zastąpienia
+   otoczenia wyłącza wbudowany ogród, zachowując obiekty kompozycji.
+   Starsza ścieżka **Dodaj własny model → +** także działa.
 
 Eksport centruje siatkę w X/Z, wyrównuje najniższy punkt do Y=0 i ustawia
 proporcjonalną skalę. Uproszczenie celuje w 250 tys. trójkątów z ograniczonym
 błędem geometrii; wynik zależy od topologii. Jeśli plik nadal przekracza 30 MiB,
-aplikacja zgłosi błąd zamiast udostępniać niezgodny eksport. Kolory wierzchołków
+aplikacja zgłosi błąd zamiast udostępniać niezgodny eksport. Kontrolowany jest
+również limit miliona trójkątów importera environment. Kolory wierzchołków
 korzystają z `KHR_materials_unlit`, ponieważ zawierają już światło z nagrania.
 Zmiana słońca w Designerze nie przelicza oświetlenia zapisanego w skanie.
 
 To **model referencyjny otoczenia**, nie natywne edytowalne elementy Customer
 Garden: pozostaje jednym obiektem w zakładce Scena. Nie tworzy kolizji,
 automatycznego podłoża pod meble ani segmentacji ścian i wyposażenia.
-Przycisk Environment Edit w Designerze dotyczy jego wbudowanego ogrodu.
+Eksport projektu oznacza skan jako własne otoczenie (`environment: true`).
 Ubytki i artefakty rekonstrukcji pozostają widoczne; eksport nie naprawia
 brakujących powierzchni. Po imporcie sprawdź skalę względem znanego wymiaru.
 

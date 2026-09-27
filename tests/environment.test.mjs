@@ -17,7 +17,7 @@ test('environment is self-contained, grounded, scaled and compatible with Design
  assert.deepEqual(bounds.min,[-10,0,-5]);assert.deepEqual(bounds.max,[10,10,5]);
  assert.ok(d.getRoot().listMaterials()[0].getExtension('KHR_materials_unlit'));
  assert.deepEqual(Array.from(d.getRoot().listMeshes()[0].listPrimitives()[0].getAttribute('COLOR_0').getArray()),[1,0,0,0,1,0,0,0,1]);
- assert.equal(project.version,1);assert.equal(project.environment,'empty');assert.equal(project.instances[0].assetId,project.customAssets[0].id);
+ assert.equal(project.version,1);assert.equal(project.environment,'empty');assert.equal(project.instances[0].assetId,project.customAssets[0].id);assert.equal(project.customAssets[0].environment,true);
  assert.deepEqual(Buffer.from(project.customAssets[0].data,'base64'),glb);assert.ok(project.width>=8&&project.width<=80);assert.ok(project.depth>=8&&project.depth<=80);
 });
 test('invalid scale or splat input is rejected',async()=>{

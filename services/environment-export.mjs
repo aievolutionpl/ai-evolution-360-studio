@@ -38,9 +38,10 @@ export async function buildEnvironment(input,{size=20,name='Moja przestrzeń',id
  wrapper.setExtras({role:'environment-reference',source:'AI Evolution 360 Studio',scaleApproximate:true,dimensions,collision:false});
  root.setDefaultScene(scene);
  const glb=Buffer.from(await io.writeBinary(doc));
+ if(triangleCount(doc)>1000000)throw new Error('Środowisko przekracza limit miliona trójkątów Designera. Uprość skan.');
  if(glb.length>GLB_LIMIT)throw new Error('Siatka po optymalizacji przekracza limit 30 MB Smart Concept Designer. Przygotuj mniejszy fragment sceny.');
  const assetId=`custom-studio-${id}`,label=String(name).slice(0,60);
- const project={version:1,name:label,environment:'empty',width:Math.max(8,Math.min(80,Math.ceil(dimensions[0]+4))),depth:Math.max(8,Math.min(80,Math.ceil(dimensions[2]+4))),time:14,grid:false,snap:false,landscapeVersion:1,layers:{buildings:false,planting:false,boundary:false},environmentEdits:{},surfaces:{},instances:[{id:`environment-${id}`,assetId,x:0,z:0,rotation:0,scale:1}],customAssets:[{id:assetId,name:label+' · environment',data:glb.toString('base64')}],studioExport:{version:1,dimensions,scaleApproximate:true,collisions:false}};
+ const project={version:1,name:label,environment:'empty',width:Math.max(8,Math.min(80,Math.ceil(dimensions[0]+4))),depth:Math.max(8,Math.min(80,Math.ceil(dimensions[2]+4))),time:14,grid:false,snap:false,landscapeVersion:1,layers:{buildings:false,planting:false,boundary:false},environmentEdits:{},surfaces:{},instances:[{id:`environment-${id}`,assetId,x:0,z:0,rotation:0,scale:1}],customAssets:[{id:assetId,name:label+' · environment',environment:true,data:glb.toString('base64')}],studioExport:{version:1,dimensions,scaleApproximate:true,collisions:false}};
  return {glb,project,summary:{bytes:glb.length,before,faces:triangleCount(doc),dimensions,size}};
 }
 
