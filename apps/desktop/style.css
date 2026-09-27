@@ -35,3 +35,5 @@ progress{accent-color:#a280f7}progress::-webkit-progress-value{background:linear
 #route-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:16px 0}#route-controls .secondary{font-size:11px;padding:10px}
 .source-tabs{display:flex;gap:10px;margin:0 0 18px}.source-tabs button{flex:1}.source-tabs .selected{background:#3c2c68;border-color:#a68aff;color:#fff}.photo-gallery{margin-top:18px;display:grid;gap:12px}.photo-gallery[hidden]{display:none}.photo-guide{margin-bottom:24px}.photo-guide p{max-width:950px;color:var(--muted);line-height:1.7}#viewer .pnlm-container{height:100%;width:100%}.pnlm-load-box{border-radius:12px}
 #cleanup-panel p{line-height:1.65;margin:12px 0}#cleanup-panel .panel-heading{flex-wrap:wrap}#cleanup-panel .badge{font-size:9px}#cleanup-compare[hidden]{display:none}#cleanup-working progress{width:100%}#cleanup-phase{overflow-wrap:anywhere;max-height:5em;overflow:auto}
+
+#blender-panel p{line-height:1.65;margin:12px 0}#blender-panel .panel-heading{flex-wrap:wrap}#mesh-phase{overflow-wrap:anywhere;max-height:5em;overflow:auto}#mesh-working progress{width:100%}#download-glb[hidden]{display:none}

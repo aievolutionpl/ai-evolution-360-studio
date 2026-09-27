@@ -4,7 +4,7 @@
 **Nagraj miejsce kamerą Insta360. Zamień footage w interaktywną wizualizację 3D.**
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-9c78ff.svg)](LICENSE)
-![Status](https://img.shields.io/badge/status-experimental_v0.3.2-729cff)
+![Status](https://img.shields.io/badge/status-experimental_v0.4.0-729cff)
 ![Platform](https://img.shields.io/badge/platform-Windows_10%2F11-729cff)
 
 AI Evolution 360 Studio łączy nagranie wideo, rekonstrukcję Gaussian Splatting i podgląd 3D w jednym prostym interfejsie. Dodajesz film, wybierasz jakość, obserwujesz przetwarzanie, a potem rozglądasz się po odtworzonej przestrzeni i eksportujesz scenę.
@@ -151,3 +151,32 @@ dwa odległe ujęcia z poruszającymi się osobami nie dały wiarygodnej geometr
 Wyższy preset nie zastąpi brakujących ujęć. Przybliżony podgląd INSP może mieć
 widoczny szew i pochylenie; do wiernego, skalibrowanego podglądu eksportuj JPG 2:1
 z Insta360 Studio. Oryginalne INSP pozostają lokalnie i są zachowane.
+
+
+## Filmy w High Quality i eksport do Blendera (v0.4)
+
+Nowy projekt domyślnie wybiera **High Quality**: do 400 klatek na tor, próbkowanie
+do około 3 klatek/s, bok 2048 px, 30 000 kroków treningu i do miliona splatów.
+SfM i trening używają poziomu high; trening ma jawny dzielnik rozdzielczości 1.
+Podgląd startuje z pełną jakością renderowania. Możesz ręcznie włączyć tryb
+płynniejszego podglądu lub wybrać Szybki test. Wyższe ustawienia kosztują więcej
+czasu i pamięci GPU; nie naprawią rozmytego filmu, braku paralaksy ani ruchu osób.
+Istniejące sceny nie są automatycznie przeliczane: użyj „Przelicz z inną jakością”.
+Generacja i eksport wymagają co najmniej 5 GB wolnego miejsca na dysku projektu;
+to próg wstępny, a nie gwarantowany limit zużycia dla długiego materiału.
+
+W gotowym projekcie wybierz **Przenieś do Blendera → Przygotuj GLB**. Silnik
+wydobywa siatkę trójkątów z aktualnego wariantu modelu (także po czyszczeniu),
+usuwa drobne odizolowane komponenty i zapisuje kolory wierzchołków. Eksport
+tekstury UV nie jest włączony: natywny atlas UV powodował błąd na dużej scenie.
+GLB jest standardowym glTF 2.0 mesh, nie rozszerzeniem Gaussian Splatting.
+Blender: **File → Import → glTF 2.0 (.glb/.gltf)**. Do oglądania kolorów włącz
+Material Preview. Obiekt i jego wierzchołki możesz edytować w Edit Mode; wybrane
+fragmenty oddzielisz poleceniem Separate → Selection. To eksport całej sceny,
+a nie automatyczna segmentacja mebli. Zapisz projekt jako .blend.
+
+Eksport jest oddzielnym zadaniem z możliwością anulowania i nie zmienia SOG/PLY.
+Zmiana wariantu wymaga nowego GLB; interfejs nie proponuje starego modelu jako
+eksportu nowej sceny. Mesh może mieć ubytki, nierówną topologię i inne odbicia niż
+splaty. Wymaga ręcznej kontroli; nie gwarantuje skali pomiarowej ani szczelności
+siatki do druku 3D. Oryginalny eksport PLY nadal służy narzędziom Gaussian Splat.

@@ -1,0 +1,7 @@
+import assert from 'node:assert/strict';
+const base='http://127.0.0.1:8765';const h=await fetch(base+'/api/health').then(r=>r.json());const headers={'X-Studio-Token':h.token,'Content-Type':'application/json'};
+const projects=await fetch(base+'/api/projects').then(r=>r.json());const p=projects.find(p=>p.meshOutput&&p.meshOutput.sourceWeb===p.output?.web);assert.ok(p,'Need completed current GLB');
+const r=await fetch(`${base}/api/projects/${p.id}/glb`);assert.equal(r.status,200);assert.match(r.headers.get('content-disposition'),/attachment/);const b=Buffer.from(await r.arrayBuffer());assert.equal(b.toString('ascii',0,4),'glTF');assert.equal(b.readUInt32LE(8),b.length);const json=JSON.parse(b.toString('utf8',20,20+b.readUInt32LE(12)));assert.ok(json.meshes.every(m=>m.primitives.every(p=>(p.mode??4)===4&&p.attributes.COLOR_0!==undefined)));
+const post=(action,body)=>fetch(`${base}/api/projects/${p.id}/${action}`,{method:'POST',headers,body:JSON.stringify(body)});
+if(p.originalOutput&&p.cleanedOutput){try{const other=p.output.web===p.cleanedOutput.web?'original':'cleaned';assert.equal((await post('variant',{variant:other})).status,200);assert.equal((await fetch(`${base}/api/projects/${p.id}/glb`)).status,400);}finally{await post('variant',{variant:p.output.web===p.cleanedOutput.web?'cleaned':'original'});}}
+console.log('GLB API passed: download, standard triangle mesh, vertex colors, stale variant guard.');
