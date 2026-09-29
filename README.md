@@ -66,6 +66,10 @@ Otwórz **http://127.0.0.1:8765/**. Zatrzymaj serwer przez `STOP-STUDIO.cmd`. Za
 4. Obserwuj etapy. W razie potrzeby anuluj i spróbuj ponownie.
 5. Obejrzyj wynik i pobierz SOG lub PLY.
 
+### Jak nagrywać kamerą 360°
+
+![Jak nagrywać kamerą 360°, żeby uzyskać najlepszy skan 3D](docs/images/recording-guide-360.webp)
+
 **Dobry materiał ma znaczenie:** kamera powinna zmieniać pozycję, a kolejne klatki zawierać wspólne szczegóły. Sam obrót w jednym punkcie nie wystarczy. Nagrywaj powoli, ostro i przy równym świetle; unikaj ruchomych ludzi, szkła, luster oraz dużych pustych powierzchni.
 
 Dla INSV wymagane są dwie ścieżki wideo w jednym pliku. Jeśli kamera zapisuje osobne pliki lub format nie daje się odczytać, zszyj materiał w Insta360 Studio do pełnej panoramy **equirectangular 2:1**, np. 3840 × 1920, i wybierz „Panorama 360°”. Bez reframingu, napisów, cięć ani przyspieszania.
