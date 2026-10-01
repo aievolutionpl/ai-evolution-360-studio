@@ -68,7 +68,7 @@ Otwórz **http://127.0.0.1:8765/**. Zatrzymaj serwer przez `STOP-STUDIO.cmd`. Za
 
 ### Jak nagrywać kamerą 360°
 
-![Jak nagrywać kamerą 360°, żeby uzyskać najlepszy skan 3D](docs/images/recording-guide-360.webp)
+<img src="docs/images/recording-guide-360.png" alt="Jak nagrywać kamerą 360°, żeby uzyskać najlepszy skan 3D" width="561" height="701">
 
 **Złota zasada:** kamera ma patrzeć na to samo miejsce z wielu różnych punktów — nie tylko z różnych kierunków. Obrót w jednym punkcie nie daje paralaksy, a bez paralaksy nie ma geometrii.
 
