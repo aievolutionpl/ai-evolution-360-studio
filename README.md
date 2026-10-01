@@ -70,7 +70,13 @@ Otwórz **http://127.0.0.1:8765/**. Zatrzymaj serwer przez `STOP-STUDIO.cmd`. Za
 
 ![Jak nagrywać kamerą 360°, żeby uzyskać najlepszy skan 3D](docs/images/recording-guide-360.webp)
 
-**Dobry materiał ma znaczenie:** kamera powinna zmieniać pozycję, a kolejne klatki zawierać wspólne szczegóły. Sam obrót w jednym punkcie nie wystarczy. Nagrywaj powoli, ostro i przy równym świetle; unikaj ruchomych ludzi, szkła, luster oraz dużych pustych powierzchni.
+**Złota zasada:** kamera ma patrzeć na to samo miejsce z wielu różnych punktów — nie tylko z różnych kierunków. Obrót w jednym punkcie nie daje paralaksy, a bez paralaksy nie ma geometrii.
+
+**Rób tak:** chodź powoli i płynnie (20–60 s), zmieniaj pozycję kamery, trzymaj wysokość ok. 1,3–1,6 m, zostaw 1–2 m od ścian, a przejścia i drzwi nagrywaj wolniej.
+
+**Nie rób tak:** nie stój w miejscu i nie kręć samego 360°, nie rób gwałtownych ruchów, nie nagrywaj ludzi w ruchu, unikaj luster, szkła i mocnych odbić, nie rób cięć, przyspieszeń ani reframingu.
+
+**Najlepszy schemat nagrania:** zacznij przy wejściu → obejdź pokój po łuku → przejdź przez środek → wróć blisko punktu startu.
 
 Dla INSV wymagane są dwie ścieżki wideo w jednym pliku. Jeśli kamera zapisuje osobne pliki lub format nie daje się odczytać, zszyj materiał w Insta360 Studio do pełnej panoramy **equirectangular 2:1**, np. 3840 × 1920, i wybierz „Panorama 360°”. Bez reframingu, napisów, cięć ani przyspieszania.
 
