@@ -13,8 +13,10 @@ import { cameraSettings } from './viewer-camera.mjs';
 import { ProjectStore, validId } from './project-manager/index.mjs';
 import { run, stopChild, trainingProgress } from './spirula-runner/index.mjs';
 import { defaultSettings } from '../vendor/supersplat-viewer/dist/settings.js';
+import { createSpatialRoutes } from './api/spatial-routes.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+if (existsSync(join(root, '.env'))) process.loadEnvFile(join(root, '.env'));
 const port = Number(process.env.STUDIO_PORT || 8765);
 const token = randomBytes(24).toString('hex');
 const store = new ProjectStore(join(root, 'workspace/projects'));
@@ -22,7 +24,7 @@ store.recover();
 const engine = ['toolchain/spirula-build-source/build_vulkan/spirula.exe','toolchain/spirula/spirula.exe'].map(p=>join(root,p)).find(existsSync);
 const presets = { fast: { frames:100, size:1280, iterations:3000, cap:150000, quality:'low' }, standard:{ frames:180,size:1600,iterations:10000,cap:400000,quality:'medium' }, max:{frames:400,size:2048,iterations:30000,cap:1000000,quality:'high'} };
 let active = null, uploadBusy = false;
-const health = { product:'AI Evolution 360 Studio', version:'0.5.0', ready:false, engine:'Sprawdzanie silnika…', gpu:'Sprawdzanie GPU…' };
+const health = { product:'AI Evolution 360 Studio', version:'0.6.0', ready:false, engine:'Sprawdzanie silnika…', gpu:'Sprawdzanie GPU…' };
 if (engine) Promise.all([run(engine,['--help'],{timeout:15000}),run(engine,['sam','devices'],{timeout:15000}),run('ffprobe',['-version'],{timeout:15000}),run('ffmpeg',['-version'],{timeout:15000})]).then(([version,gpu])=>Object.assign(health,{ready:true,engine:version.split('\n')[0],gpu:gpu.split('\n').find(l=>/NVIDIA|AMD|Intel/.test(l))?.replace(/\s+/g,' ').trim() || 'Vulkan'})).catch(e=>Object.assign(health,{ready:false,engine:e.message}));
 else health.engine = 'Nie znaleziono Spirula. Sprawdź toolchain.';
 
@@ -42,7 +44,7 @@ function asset(res, req, path, download=false) {
     const stream=createReadStream(path,{start,end});stream.on('error',()=>res.destroy());stream.pipe(res);
 }
 function safePath(base, path){const p=resolve(base,path);if(!p.startsWith(resolve(base)+sep))throw new Error('Niedozwolona ścieżka.');return p;}
-async function body(req){let text='';for await(const chunk of req){text+=chunk;if(text.length>10000)throw new Error('Zbyt duże żądanie.');}return JSON.parse(text||'{}');}
+async function body(req,limit=10000){let text='';for await(const chunk of req){text+=chunk;if(text.length>limit)throw new Error('Zbyt duże żądanie.');}return JSON.parse(text||'{}');}
 async function probe(project) {
     const raw = await run('ffprobe',['-v','error','-show_streams','-show_format','-of','json',project.sourcePath],{timeout:30000});
     const info=JSON.parse(raw), videos=info.streams.filter(s=>s.codec_type==='video'&&!s.disposition?.attached_pic);
@@ -56,7 +58,7 @@ async function probe(project) {
     try {await run('ffmpeg',['-v','error','-ss',String(Math.min(1,duration/2)),'-i',project.sourcePath,'-frames:v','1','-vf','scale=960:-2','-y',join(store.path(project.id),'source','poster.jpg')],{timeout:30000});}catch{}
 }
 async function processProject(project, options) {
-    if(active)throw new Error('Inny projekt jest przetwarzany. Poczekaj lub anuluj go.');
+    if(active||spatial.jobs.active)throw new Error('Inny projekt jest przetwarzany. Poczekaj lub anuluj go.');
     if(!health.ready)throw new Error('Silnik nie jest gotowy.');
     const photos=project.kind==='photos',rawPhotos=photos&&project.photos?.[0]?.projection==='fisheye';
     if(photos&&(!project.uploadComplete||project.photos?.length<3))throw new Error('Rekonstrukcja wymaga minimum 3 zdjęć INSP lub zszytych panoram z różnych pozycji. Zalecamy 12–30; mała liczba zdjęć nie gwarantuje poprawnej geometrii.');
@@ -134,7 +136,7 @@ async function processProject(project, options) {
 }
 
 async function cleanupProject(project,strength){
-    if(active)throw new Error('Inne zadanie już trwa. Poczekaj na zakończenie.');
+    if(active||spatial.jobs.active)throw new Error('Inne zadanie już trwa. Poczekaj na zakończenie.');
     if(project.state!=='ready'||!project.output)throw new Error('Najpierw utwórz scenę 3D.');
     if(!Object.hasOwn(cleanupPresets,strength))throw new Error('Nieprawidłowa siła czyszczenia.');
     const original=project.originalOutput||project.output;project.originalOutput={...original};
@@ -153,7 +155,7 @@ async function cleanupProject(project,strength){
 }
 
 async function meshProject(project){
-    if(active)throw new Error('Poczekaj na zakończenie bieżącego zadania.');
+    if(active||spatial.jobs.active)throw new Error('Poczekaj na zakończenie bieżącego zadania.');
     if(project.state!=='ready'||!project.output)throw new Error('Najpierw wygeneruj przestrzeń 3D.');
     requireDiskSpace(project);
     const job={id:project.id,kind:'mesh',cancelled:false,child:null};active=job;
@@ -168,7 +170,7 @@ async function meshProject(project){
 }
 
 async function environmentProject(project,options){
-    if(active)throw new Error('Poczekaj na zakończenie bieżącego zadania.');
+    if(active||spatial.jobs.active)throw new Error('Poczekaj na zakończenie bieżącego zadania.');
     if(project.state!=='ready'||!project.output)throw new Error('Najpierw wygeneruj przestrzeń 3D.');
     const settings=environmentOptions(options),base=store.path(project.id);
     const reuse=project.meshOutput?.sourceWeb===project.output.web;
@@ -191,6 +193,7 @@ async function environmentProject(project,options){
     finally{project.environmentExport.finishedAt=new Date().toISOString();store.save(project);active=null;}})();return project;
 }
 
+const spatial = createSpatialRoutes({ store, json, body, asset, reconstructionBusy: () => Boolean(active) });
 const server=http.createServer(async(req,res)=>{
     try {
         if(![`127.0.0.1:${port}`,`localhost:${port}`].includes(req.headers.host)){res.writeHead(403);return res.end();}
@@ -199,7 +202,8 @@ const server=http.createServer(async(req,res)=>{
             if(req.headers['x-studio-token']!==token)return json(res,{error:'Odśwież aplikację przed wykonaniem tej operacji.'},403);
             if(req.headers.origin&&!['http://127.0.0.1:'+port,'http://localhost:'+port].includes(req.headers.origin))return json(res,{error:'Niedozwolone źródło żądania.'},403);
         }
-        if(path==='/api/health')return json(res,{...health,token,busy:active?.id||null,presets});
+        if(path==='/api/health')return json(res,{...health,token,busy:active?.id||spatial.jobs.active?.projectId||null,presets});
+        if(await spatial.handle(req,res,url))return;
         if(path==='/api/shutdown'&&req.method==='POST'){json(res,{ok:true});setTimeout(shutdown,100);return;}
         if(path==='/api/projects'&&req.method==='GET')return json(res,store.list().map(publicProject));
         if(path==='/api/photos'&&req.method==='POST'){
@@ -278,9 +282,9 @@ const server=http.createServer(async(req,res)=>{
         if(path.startsWith('/viewer/'))return asset(res,req,safePath(join(root,'vendor/supersplat-viewer/public'),decodeURIComponent(path.slice(8))));
         if(path.startsWith('/api/'))return json(res,{error:'Nieznana operacja.'},404);
         return asset(res,req,safePath(join(root,'apps/desktop'),path==='/'?'index.html':decodeURIComponent(path.slice(1))));
-    }catch(error){if(!res.headersSent)json(res,{error:error.message},400);else res.destroy();}
+    }catch(error){if(!res.headersSent)json(res,{error:error.message},error.status||400);else res.destroy();}
 });
 server.requestTimeout=0;
 server.listen(port,'127.0.0.1',()=>console.log(`AI Evolution 360 Studio: http://127.0.0.1:${port}`));
-function shutdown(){if(active){active.cancelled=true;stopChild(active.child);}server.close();const timer=setInterval(()=>{if(!active){clearInterval(timer);process.exit(0);}},100);setTimeout(()=>process.exit(0),5000).unref();}
+function shutdown(){if(active){active.cancelled=true;stopChild(active.child);}if(spatial.jobs.active)spatial.jobs.cancel({id:spatial.jobs.active.projectId});server.close();const timer=setInterval(()=>{if(!active&&!spatial.jobs.active){clearInterval(timer);process.exit(0);}},100);setTimeout(()=>process.exit(0),5000).unref();}
 for(const signal of ['SIGINT','SIGTERM'])process.on(signal,shutdown);

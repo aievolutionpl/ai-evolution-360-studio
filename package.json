@@ -1,11 +1,12 @@
 {
   "name": "ai-evolution-360-studio",
   "private": true,
-  "version": "0.5.0",
+  "version": "0.6.0",
   "type": "module",
   "scripts": {
     "start": "node services/server.mjs",
-    "test": "node --test tests/*.test.mjs"
+    "test": "node --test tests/*.test.mjs",
+    "test:spatial-api": "node scripts/check-spatial-api.mjs"
   },
   "engines": {
     "node": ">=22"

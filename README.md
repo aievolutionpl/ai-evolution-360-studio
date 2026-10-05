@@ -4,12 +4,49 @@
 **Nagraj miejsce kamerą Insta360. Zamień footage w interaktywną wizualizację 3D.**
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-9c78ff.svg)](LICENSE)
-![Status](https://img.shields.io/badge/status-experimental_v0.5.0-729cff)
+![Status](https://img.shields.io/badge/status-experimental_v0.6.0-729cff)
 ![Platform](https://img.shields.io/badge/platform-Windows_10%2F11-729cff)
 
 AI Evolution 360 Studio łączy nagranie wideo, rekonstrukcję Gaussian Splatting i podgląd 3D w jednym prostym interfejsie. Dodajesz film, wybierasz jakość, obserwujesz przetwarzanie, a potem rozglądasz się po odtworzonej przestrzeni i eksportujesz scenę.
 
 Projekt **AI Evolution Polska** dla twórców i pasjonatów cyfrowego odwzorowania miejsc. Zaprojektowany z myślą o materiałach z kamer **Insta360 X4/X5**, panoramach 360° oraz zwykłych filmach MP4/MOV.
+
+## Nowe w 0.6 — fundament Spatial Studio
+
+Studio otrzymało spokojniejszy interfejs premium, większy podgląd, czytelny przebieg pracy, wyszukiwanie projektów oraz panel **Poznaj swoją przestrzeń**. Dotychczasowe rekonstrukcje Spirula, czyszczenie, SOG/PLY, Blender GLB i eksport do Smart Concept Designer pozostają dostępne.
+
+1. Dodaj film lub zdjęcia 360°, albo otwórz wcześniejszy projekt.
+2. Kliknij **Analizuj materiał**. Lokalny FFmpeg przygotuje do 72 próbek, a Studio wybierze do 24 różnych ujęć, preferując ostrość i pokrycie kolejnych fragmentów materiału.
+3. Obejrzyj klatki, powiększ je i sprawdź ostrzeżenia. Podobieństwo obrazu i ostrość są wskazówkami; nie dowodzą dobrej geometrii ani ruchu kamery.
+4. Opcjonalnie włącz **AI · rozpoznawanie obiektów**, sprawdź listę i zapisz zaznaczone referencje w bibliotece projektu.
+5. Pobierz `scene.json` oraz dotychczasowe formaty eksportu.
+
+**Lokalny tryb nie rozpoznaje obiektów.** Analiza AI korzysta z OpenAI Vision; wymaga własnego klucza i może kosztować środki z konta API. Skopiuj `.env.example` do `.env`, ustaw `OPENAI_API_KEY` i uruchom Studio ponownie. Domyślny model to `gpt-4.1-mini`, zmieniany przez `STUDIO_VISION_MODEL`. Klucz nie jest zwracany do przeglądarki. Obrazy trafiają do OpenAI wyłącznie po wybraniu trybu AI i uruchomieniu analizy; wysyłane są wybrane JPEG, nie cały film. Rekonstrukcja pozostaje lokalna.
+
+Referencje assetów zawierają nazwę, opis, materiał, klatkę źródłową i historię wersji. **Nie są jeszcze izolowanymi obrazami ani wygenerowanymi modelami GLB.** Image-to-3D, edytor transformacji, hybrid rendering, fizyka i World Labs należą do kolejnych etapów. W tym wydaniu nie ma automatycznego usuwania mebli ani potwierdzonej skali metrycznej.
+
+### Dane i API Spatial Studio
+
+Każdy otwarty projekt otrzymuje manifest `workspace/projects/<id>/scene.json` v1. Migracja zachowuje `project.json`, footage i wyniki. Manifest synchronizuje aktualny wariant splata oraz pasujący mesh, a zachowuje niezależne obiekty i metadane. Zapis wymaga rewizji, tworzy historię i zwraca HTTP 409 przy konflikcie. Współrzędne obiektów są w układzie sceny (Y w górę, obrót w radianach); jednostki rekonstrukcji nie są automatycznie metrami. PLY zachowuje układ źródłowy Spiruli; istniejący eksport GLB stosuje konwersję do układu Studio.
+
+```
+scene.json                      kanoniczny manifest v1
+scene-history/<revision>.json    poprzednie rewizje manifestu
+assets/<asset-id>/object.json    referencja / model i metadane
+assets/<asset-id>/versions/      historia assetu
+analysis/frames.json             ostatni udany wybór klatek
+analysis/scene-analysis.json     ostatni udany raport
+analysis/runs/<job-id>/          wersje raportów i wybrane JPEG
+jobs/<job-id>.json               status, postęp etapu i błędy analizy
+```
+
+Nowe endpointy: `GET /api/spatial/providers`, `GET /api/projects/:id/spatial`, `GET/POST .../scene`, `GET/POST .../assets`, `POST .../analyse`, `POST .../analysis-cancel`, `GET .../analysis-frame`. `scene?download=1` pobiera manifest. Zapis sceny: `{scene, revision}`; zapis referencji AI: `{runId, objectIds}`. Modyfikacje wymagają tego samego tokenu Studio co dotychczasowe operacje.
+
+Analiza jest zadaniem w tle z rzeczywistymi etapami i możliwością anulowania. Procent oceny klatek oznacza liczbę ocenionych próbek; podczas odpowiedzi AI nie pokazujemy fikcyjnego procentu. Po restarcie przerwane zadanie można uruchomić ponownie. Ostatni udany raport pozostaje dostępny.
+
+Architektura i dalsza migracja: [SPATIAL_STUDIO_PLAN.md](docs/SPATIAL_STUDIO_PLAN.md). Inspiracja podziałem środowiska, obiektów i dostawców: [Image Blaster](https://github.com/neilsonnn/image-blaster); bez kopiowania jego implementacji.
+
+Testy: `npm test`. Po uruchomieniu Studio: `npm run test:spatial-api -- http://127.0.0.1:8766` sprawdza rzeczywisty FFmpeg, upload, analizę, obrazy, manifest, ochronę zapisu i konflikty rewizji. Tworzy mały projekt syntetyczny i archiwizuje go po weryfikacji. Uruchamianie na wybranym porcie: `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Start-Studio.ps1 -Port 8766`.
 
 > **Status uczciwie:** pełna ścieżka od syntetycznego MP4 do interaktywnej sceny została sprawdzona na Windows z RTX 3070. Sprawdzono również jeden rzeczywisty INSV z dwiema soczewkami (57 s); nie oznacza to pełnej zgodności ze wszystkimi trybami X4/X5. Obsługa INSV, jakość modelu i czas pracy zależą od materiału, kodeka, wersji silnika oraz GPU. To wersja eksperymentalna.
 
