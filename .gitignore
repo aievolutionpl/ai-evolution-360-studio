@@ -14,3 +14,7 @@ docs/SPIRULA_ANALYSIS.md
 docs/UI_VALIDATION.md
 
 .serena/
+# Private camera originals must never be included in a repository sync.
+*.insv
+*.lrv
+*.insp
