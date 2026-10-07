@@ -1,14 +1,16 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { run } from '../spirula-runner/index.mjs';
-import { writeJson } from '../scene/scene-manager.mjs';
+import { SceneManager } from '../scene/scene-manager.mjs';
+import { commitAnalysis } from './analysis-store.mjs';
+import { selectObjectReference } from './reference-selector.mjs';
 import { scorePixels, selectFrames } from './frame-selector.mjs';
 import { analyseVision } from '../providers/vision-provider.mjs';
 function imageFiles(folder) {
     if (!existsSync(folder)) return [];
     return readdirSync(folder, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name)).flatMap(e => e.isDirectory() ? imageFiles(join(folder, e.name)) : /\.(jpg|jpeg|png)$/i.test(e.name) ? [join(folder, e.name)] : []);
 }
-export async function analyseProject({ project, store, job, update, provider, count = 24, command = run, vision = analyseVision }) {
+export async function analyseProject({ project, store, job, update, provider, count = 24, command = run, vision = analyseVision, sceneManager = new SceneManager(store) }) {
     const base = store.path(project.id), relative = `analysis/runs/${job.id}`, folder = join(base, relative);
     const candidates = join(folder, 'candidates'), selectedFolder = join(folder, 'selected-frames');
     mkdirSync(candidates, { recursive: true }); mkdirSync(selectedFolder, { recursive: true });
@@ -38,7 +40,6 @@ export async function analyseProject({ project, store, job, update, provider, co
     const report = await vision({ provider, frames: selection.selected, summary: selection.summary, signal: job.controller.signal });
     if (job.cancelled) throw new Error('Anulowano analizę.');
     const frames = { version: 1, runId: job.id, createdAt: new Date().toISOString(), summary: selection.summary, frames: selection.selected.map(({ absolutePath, signature, ...frame }) => frame) };
-    const analysis = { version: 1, runId: job.id, createdAt: frames.createdAt, sourceAttempt: project.attempt, ...report };
-    writeJson(join(folder, 'frames.json'), frames); writeJson(join(folder, 'scene-analysis.json'), analysis);
-    writeJson(join(base, 'analysis', 'frames.json'), frames); writeJson(join(base, 'analysis', 'scene-analysis.json'), analysis);
+    const analysis = { ...report, version: 1, runId: job.id, createdAt: frames.createdAt, sourceAttempt: project.attempt, objects: report.objects.map(object => ({ ...object, reference: selectObjectReference(object, frames.frames) })) };
+    commitAnalysis({ base, sceneManager, project, frames, analysis });
 }

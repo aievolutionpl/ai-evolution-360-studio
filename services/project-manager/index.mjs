@@ -7,7 +7,7 @@ export class ProjectStore {
     constructor(root) { this.root = root; mkdirSync(root, { recursive: true }); }
     path(id) { if (!validId(id)) throw new Error('Nieprawidłowy identyfikator projektu.'); return join(this.root, id); }
     get(id) { return JSON.parse(readFileSync(join(this.path(id), 'project.json'), 'utf8')); }
-    save(project) { const p = join(this.path(project.id), 'project.json'); writeFileSync(p+'.tmp', JSON.stringify(project, null, 2)); renameSync(p+'.tmp',p); return project; }
+    save(project) { const p = join(this.path(project.id), 'project.json'); writeFileSync(p+'.tmp', JSON.stringify(project, null, 2)); renameSync(p+'.tmp',p); this.onSave?.(project); return project; }
     list() { return readdirSync(this.root).filter(validId).flatMap(id => { try { return [this.get(id)]; } catch { return []; } }).sort((a,b) => b.createdAt.localeCompare(a.createdAt)); }
     create(name) {
         const project = { id: randomUUID(), name: name.slice(0,140), createdAt: new Date().toISOString(), state: 'uploading', stage: 0, progress: null, attempt: 0, archived: false };
