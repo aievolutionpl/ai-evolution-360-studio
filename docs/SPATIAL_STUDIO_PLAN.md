@@ -1,5 +1,64 @@
 # AI Evolution Spatial Studio — etap 1
 
+## Przyrost po audycie 0.6 (2026-10-07)
+
+Repo zawierało już fundament opisany niżej. [Audyt](SPATIAL_AUDIT.md) wskazał luki w imporcie assetów, publikacji raportu i kontraktach manifestu. Ten przyrost je uzupełnia; nie dodaje jeszcze ekstrakcji, generacji ani hybrid viewera.
+
+```
+services/api/http.mjs                 JSON, limity bajtów, pliki i Range
+services/api/asset-routes.mjs          import, metadane, pliki i historia
+services/assets/asset-schema.mjs      wspólna walidacja i indeks assetów
+services/assets/asset-import.mjs      GLB 2.0, obrazy, lokalne miniatury
+services/vision/analysis-schema.mjs   walidacja obiektów i obserwacji 2D
+services/vision/analysis-prompt.mjs   edytowalny prompt poza adapterem
+services/vision/analysis-store.mjs    immutable run + atomowa publikacja
+services/vision/reference-selector.mjs wybór referencji konkretnego obiektu
+services/providers/provider-registry.mjs kontrakt dostawców
+services/providers/openai-vision.mjs  adapter z ograniczonym retry i abort
+services/storage/json.mjs            wspólny atomowy zapis JSON
+apps/desktop/asset-library.js        import, filtry, edycja i historia UI
+```
+
+`server.mjs` nadal orchestruje dotychczasowy pipeline; helpery HTTP oraz nowa logika sceny, assetów, analizy, providerów i jobów są poza nim. Moduł `generation` zostanie wydzielony przy wdrożeniu faktycznych zadań image-to-3D, bez pustego endpointu w tym etapie.
+
+### Kontrakty manifestu i kompatybilność
+
+`scene.json` v1 przechowuje `environment`, `objects`, `lighting`, `audio`, `camera`, `metadata` oraz addytywne `assets` i `analysis`:
+
+```json
+{
+  "assets": [{"id": "chair", "name": "Fotel", "version": 2, "type": "glb", "status": "ready", "manifest": "assets/chair/object.json"}],
+  "analysis": {"runId": "run-id", "frames": "analysis/runs/run-id/frames.json", "report": "analysis/runs/run-id/scene-analysis.json", "provider": "openai", "sourceAttempt": 1}
+}
+```
+
+To fragment manifestu, nie cały plik. Klient edytuje kompozycję i metadane z aktualną rewizją; `environment`, katalog `assets` i aktywny `analysis` są zarządzane przez serwer. Każda zmiana tworzy historię i zwiększa rewizję. `assetId` w nowych instancjach musi wskazywać znany asset; starsze instancje ze względną ścieżką `asset` nadal działają. Układ współrzędnych pozostaje Y-up, radiany i jednostki sceny bez potwierdzonej skali metrycznej.
+
+`object.json` zawiera pełne metadane i pliki assetu, a manifest zawiera jego indeks. Biblioteka uzgadnia indeks po imporcie oraz przy odczycie, dzięki czemu zapis assetu zakończony przed przerwaniem aplikacji jest odzyskiwalny. Wersje plików są niezmienne; podmiana nie nadpisuje starych bajtów. Pliki projektu i źródła rekonstrukcji nie są zmieniane przez import.
+
+Analiza zapisuje klatki i raport do `analysis/runs/<runId>/`, a potem atomowo zmienia wskaźnik w `scene.json`. Odczyt używa obu plików wskazanego runu, nawet jeżeli stare kopie kompatybilności są nieaktualne. Stare pasujące raporty bez wskaźnika są adoptowane przy pierwszym odczycie. Niezgodna para raport/klatki zgłasza błąd zamiast mieszać wyniki.
+
+Obserwacja 2D: `{frameId, bbox: [x,y,width,height], visibility}`; liczby znormalizowane do 0..1, box w granicach obrazu, referencja wyłącznie do znanej klatki. `reference` zapisuje wybraną klatkę, metodę, opcjonalną ramkę i `isolated:false`. Nie dowodzi segmentacji ani pozycji 3D. Starsze raporty bez obserwacji korzystają z jakości klatek jako heurystyki.
+
+### API assetów
+
+| Metoda | Ścieżka względem `/api/projects/:id` | Dane |
+| --- | --- | --- |
+| POST | `/assets/import?name=Chair.glb` | Surowe bajty; nowy asset |
+| POST | `/assets/:assetId/import?name=Chair.glb&version=1` | Surowe bajty; model lub obraz nowej wersji |
+| PATCH | `/assets/:assetId` | `{version, patch: {name, metadata}}`; oba pola patch opcjonalne |
+| GET | `/assets/:assetId` | Aktualne metadane |
+| GET | `/assets/:assetId/versions` | Historia metadanych; najnowsza pierwsza |
+| GET | `/assets/:assetId/file?slot=model&download=1` | `model`, `sourceImage`, `referenceImage`, `thumbnail` |
+
+Wszystkie modyfikacje korzystają z dotychczasowego tokenu i ochrony origin. Nie ma importu przez zewnętrzny URL. GLB: limit 100 MiB, poprawny header/bloki/geometria, bez zewnętrznych URI. Zdjęcia: 20 MiB, 36 MP, bok 8192 px, pojedynczy obraz JPEG/PNG/WebP potwierdzony przez ffprobe; miniatura przez FFmpeg. Brak skonfigurowanego dekodera kompresji GLB powoduje jawny błąd. Biblioteka ma limit 500 assetów.
+
+### Testy przyrostu
+
+`npm test` obejmuje nowe warstwy w `assets.test.mjs`, `scene-analysis.test.mjs`, `providers-jobs.test.mjs` i `http.test.mjs` oraz wcześniejsze regresje. `npm run test:spatial-api -- http://127.0.0.1:8766` używa prawdziwego serwera i FFmpeg: upload, analiza, run pointer, obrazy, GLB, podmiana, konflikt, nazwa, historia, download i token/origin. Użyj `STUDIO_WORKSPACE` do izolacji danych QA. Płatny provider jest testowany przez kontrolowane odpowiedzi; jakość detekcji na prawdziwych skanach wymaga osobnego sprawdzenia z kluczem.
+
+## Pierwotny fundament 0.6
+
 ## Stan przed zmianą
 
 Studio 0.5 używa Node HTTP i statycznego interfejsu w `apps/desktop`. `services/server.mjs` łączy routing, upload, rekonstrukcję i eksporty. `ProjectStore` zapisuje `project.json`; Spirula wykonuje SfM i trening, PlayCanvas eksportuje SOG. Osobne moduły obsługują zdjęcia, czyszczenie, kamerę, Blender i Smart Concept Designer. Te funkcje i ich formaty pozostają kompatybilne.
