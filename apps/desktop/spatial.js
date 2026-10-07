@@ -1,3 +1,4 @@
+import { initAssetLibrary } from './asset-library.js';
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const liveStatuses = ['queued', 'preparing', 'selecting', 'analysing', 'cancelling'];
 export function initSpatial({ api, getState, toast }) {
@@ -26,6 +27,7 @@ export function initSpatial({ api, getState, toast }) {
     document.querySelector('.preview-column').append(panel);
     const $ = id => document.getElementById(id);
     let data = null, projectId = null, loading = false, resultKey = '', providersLoaded = false, disposed = false;
+    const library = initAssetLibrary({ api, getData: () => data, getProjectId: () => projectId, refresh, toast });
     function providerNote() {
         const cloud = $('vision-provider').value === 'openai';
         $('provider-note').textContent = cloud ? 'AI wyśle wybrane klatki do OpenAI. Analiza może wiązać się z kosztem API; materiał źródłowy pozostaje lokalnie.' : 'Lokalnie: ocena ostrości, podobieństwa i wybór ujęć. Bez wysyłania obrazów.';
@@ -50,19 +52,20 @@ export function initSpatial({ api, getState, toast }) {
         flow.querySelector('[data-step="reconstruct"]').classList.toggle('working', selected?.state === 'processing');
         flow.querySelector('[data-step="analyse"]').classList.toggle('working', busy);
         $('analysis-empty').hidden = Boolean(selected); $('analysis-content').hidden = !selected;
-        if (!selected) return;
+        if (!selected) { library.render(); return; }
         $('analyse-scene').disabled = !source || Boolean(health.busy) || busy || ['uploading', 'processing', 'cancelling'].includes(selected.state);
         $('vision-provider').disabled = busy;
         $('analysis-working').hidden = !busy; $('analysis-phase').textContent = job?.phase || '';
         $('analysis-cancel').disabled = job?.status === 'cancelling';
         if (job?.progress == null) $('analysis-progress').removeAttribute('value'); else $('analysis-progress').value = job.progress;
         $('analysis-error').hidden = !job?.error; $('analysis-error').textContent = job?.error || '';
-        $('scene-info').textContent = data?.scene ? `v${data.scene.version} · rewizja ${data.scene.revision} · ${data.scene.objects.length} obiektów 3D` : 'Wczytywanie manifestu…';
+        $('scene-info').textContent = data?.scene ? `v${data.scene.version} · rewizja ${data.scene.revision} · ${data.scene.objects.length} obiektów 3D · ${data.scene.assets.length} assetów` : 'Wczytywanie manifestu…';
         $('download-scene').href = `/api/projects/${selected.id}/scene?download=1`;
         const result = data?.analysis, frames = data?.frames;
         $('analysis-result').hidden = !result || !frames;
-        if (result && frames && resultKey !== result.runId) {
-            resultKey = result.runId;
+        const reportKey = result ? `${result.runId}:${selected.attempt}` : '';
+        if (result && frames && resultKey !== reportKey) {
+            resultKey = reportKey;
             const s = frames.summary;
             $('analysis-metrics').innerHTML = `<div><strong>${s.selected}</strong><span>wybranych ujęć</span></div><div><strong>${s.sampled}</strong><span>ocenionych próbek</span></div><div><strong>${s.similar}</strong><span>podobnych widoków</span></div><div><strong>${result.provider === 'local' ? '—' : result.objects.length}</strong><span>${result.provider === 'local' ? 'AI opcjonalnie' : 'obiektów AI'}</span></div>`;
             $('analysis-summary').textContent = result.summary;
@@ -71,15 +74,12 @@ export function initSpatial({ api, getState, toast }) {
             $('selected-frames').innerHTML = frames.frames.map(f => `<button class="frame-card" data-frame="${f.id}" aria-label="Powiększ ujęcie ${f.index + 1}"><img loading="lazy" src="${frameUrl(f)}" alt="Wybrane ujęcie ${f.index + 1}"><span>${String(f.index + 1).padStart(2, '0')} <small>ostrość ${Math.round(f.sharpness)}</small></span></button>`).join('');
             $('objects-count').textContent = result.provider === 'local' ? 'TYLKO W TRYBIE AI' : `${result.objects.length} rozpoznanych`;
             $('objects-note').textContent = result.provider === 'local' ? 'Ocena lokalna nie rozpoznaje obiektów. Wybierz skonfigurowany tryb AI, aby otrzymać listę referencji.' : 'Rozpoznanie AI może się mylić. Sprawdź referencje przed zapisem. Ściany i podłogi pozostają częścią środowiska.';
+            if (result.sourceAttempt !== undefined && result.sourceAttempt !== selected.attempt) $('objects-note').textContent += ' Raport pochodzi z wcześniejszej próby rekonstrukcji.';
             $('detected-objects').innerHTML = result.objects.map(o => `<label class="detected-object"><input type="checkbox" value="${escape(o.id)}"><div><strong>${escape(o.name)}</strong><p>${escape(o.description)}</p><small>${escape(o.materials.join(' · '))}</small></div><span>${Math.round(o.confidence * 100)}%<small>pewność AI</small></span></label>`).join('');
             $('save-references').hidden = !result.objects.length;
             $('save-references').disabled = true;
         }
-        $('asset-section').hidden = !data?.assets?.length;
-        if (data?.assets?.length) {
-            $('asset-count').textContent = `${data.assets.length} referencji`;
-            $('asset-list').innerHTML = data.assets.map(a => `<article class="asset-card"><span class="asset-glyph">◇</span><div><strong>${escape(a.name)}</strong><p>${escape(a.metadata.description || 'Referencja obiektu')}</p></div><span class="badge">REFERENCJA · V${a.version}</span></article>`).join('');
-        }
+        library.render();
     }
     async function refresh() {
         if (loading || disposed || !projectId) return;

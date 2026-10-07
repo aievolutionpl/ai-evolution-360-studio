@@ -30,10 +30,29 @@ export function validateScene(scene) {
         for (const key of ['sog', 'ply', 'mesh']) relativeFile(scene.environment[key]);
     }
     if (!Array.isArray(scene.objects) || scene.objects.length > 500) throw new Error('Nieprawidłowa lista obiektów.');
+    // Additive v1 fields: legacy manifests without these fields remain valid.
+    if (scene.assets !== undefined) {
+        if (!Array.isArray(scene.assets) || scene.assets.length > 500) throw new Error('Nieprawidłowy katalog assetów.');
+        const assetIds = new Set();
+        for (const entry of scene.assets) {
+            plainObject(entry, 'Referencja assetu');
+            if (typeof entry.id !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(entry.id) || assetIds.has(entry.id)) throw new Error('Nieprawidłowy identyfikator assetu w scenie.');
+            assetIds.add(entry.id);
+            if (!Number.isSafeInteger(entry.version) || entry.version < 1 || !['glb', 'reference'].includes(entry.type) || !['ready', 'reference'].includes(entry.status)) throw new Error('Nieprawidłowa referencja assetu.');
+            if (entry.manifest !== `assets/${entry.id}/object.json`) throw new Error('Nieprawidłowa ścieżka manifestu assetu.');
+            if (typeof entry.name !== 'string' || !entry.name.trim() || entry.name.length > 140) throw new Error('Nieprawidłowa nazwa assetu.');
+        }
+    }
+    if (scene.analysis !== undefined && scene.analysis !== null) {
+        const analysis = plainObject(scene.analysis, 'Analiza');
+        if (typeof analysis.runId !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(analysis.runId)) throw new Error('Nieprawidłowy identyfikator analizy.');
+        if (analysis.frames !== `analysis/runs/${analysis.runId}/frames.json` || analysis.report !== `analysis/runs/${analysis.runId}/scene-analysis.json`) throw new Error('Nieprawidłowe ścieżki analizy.');
+        if (!Number.isSafeInteger(analysis.sourceAttempt) || analysis.sourceAttempt < 0 || typeof analysis.provider !== 'string') throw new Error('Nieprawidłowa referencja analizy.');
+    }
     const ids = new Set();
     for (const object of scene.objects) {
         plainObject(object, 'Obiekt');
-        if (!/^[a-zA-Z0-9_-]{1,80}$/.test(object.id) || ids.has(object.id)) throw new Error('Identyfikatory obiektów muszą być unikalne.');
+        if (typeof object.id !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(object.id) || ids.has(object.id)) throw new Error('Identyfikatory obiektów muszą być unikalne.');
         ids.add(object.id);
         if (typeof object.name !== 'string' || !object.name.trim() || object.name.length > 140) throw new Error('Nieprawidłowa nazwa obiektu.');
         for (const key of ['asset', 'sourceImage', 'referenceImage']) relativeFile(object[key] ?? '');
@@ -42,6 +61,7 @@ export function validateScene(scene) {
         if (!['static', 'rigidbody', 'ghost'].includes(object.physics)) throw new Error('Nieprawidłowy typ fizyki.');
         if (typeof object.visible !== 'boolean') throw new Error('Nieprawidłowa widoczność.');
         plainObject(object.metadata, 'Metadane obiektu');
+        if (object.assetId !== undefined && !scene.assets?.some(a => a.id === object.assetId)) throw new Error('Obiekt wskazuje nieznany asset.');
     }
     for (const key of ['lighting', 'audio', 'camera', 'metadata']) plainObject(scene[key], key);
     return scene;

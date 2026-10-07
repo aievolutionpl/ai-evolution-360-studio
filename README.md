@@ -23,17 +23,22 @@ Studio otrzymało spokojniejszy interfejs premium, większy podgląd, czytelny p
 
 **Lokalny tryb nie rozpoznaje obiektów.** Analiza AI korzysta z OpenAI Vision; wymaga własnego klucza i może kosztować środki z konta API. Skopiuj `.env.example` do `.env`, ustaw `OPENAI_API_KEY` i uruchom Studio ponownie. Domyślny model to `gpt-4.1-mini`, zmieniany przez `STUDIO_VISION_MODEL`. Klucz nie jest zwracany do przeglądarki. Obrazy trafiają do OpenAI wyłącznie po wybraniu trybu AI i uruchomieniu analizy; wysyłane są wybrane JPEG, nie cały film. Rekonstrukcja pozostaje lokalna.
 
-Referencje assetów zawierają nazwę, opis, materiał, klatkę źródłową i historię wersji. **Nie są jeszcze izolowanymi obrazami ani wygenerowanymi modelami GLB.** Image-to-3D, edytor transformacji, hybrid rendering, fizyka i World Labs należą do kolejnych etapów. W tym wydaniu nie ma automatycznego usuwania mebli ani potwierdzonej skali metrycznej.
+Biblioteka assetów obsługuje **import GLB oraz JPG/PNG/WebP**, wyszukiwanie, filtrowanie, zmianę nazw, pobieranie i dodawanie nowych wersji. GLB musi być samowystarczalnym modelem glTF 2.0; pliki z zewnętrznymi teksturami lub kompresją wymagającą nieskonfigurowanego dekodera są odrzucane. Limit: GLB 100 MiB, zdjęcie 20 MiB / 36 MP / bok 8192 px. Importowany lub wcześniej wygenerowany GLB można dopiąć do zapisanej referencji przez **Dodaj wersję**; poprzednie obrazy, modele i metadane pozostają na dysku.
+
+Referencje AI zawierają nazwę, opis, materiał, klatkę źródłową i historię wersji. Analiza może zapisać orientacyjne obserwacje 2D (ramkę i widoczność), a wybór referencji uwzględnia widoczność oraz jakość klatki. **Referencja nie jest izolowanym obrazem; import GLB nie uruchamia generacji ani nie dodaje obiektu do viewera.** Ekstrakcja, image-to-3D, edytor transformacji, hybrid rendering, fizyka i World Labs należą do kolejnych etapów. W tym wydaniu nie ma automatycznego usuwania mebli ani potwierdzonej skali metrycznej.
 
 ### Dane i API Spatial Studio
 
 Każdy otwarty projekt otrzymuje manifest `workspace/projects/<id>/scene.json` v1. Migracja zachowuje `project.json`, footage i wyniki. Manifest synchronizuje aktualny wariant splata oraz pasujący mesh, a zachowuje niezależne obiekty i metadane. Zapis wymaga rewizji, tworzy historię i zwraca HTTP 409 przy konflikcie. Współrzędne obiektów są w układzie sceny (Y w górę, obrót w radianach); jednostki rekonstrukcji nie są automatycznie metrami. PLY zachowuje układ źródłowy Spiruli; istniejący eksport GLB stosuje konwersję do układu Studio.
+
+`scene.json` jest źródłem kompozycji, indeksu assetów (`assets`) i aktywnego raportu (`analysis`). Pola te rozszerzają v1; starsze manifesty są uzupełniane bez usuwania własnych danych. `project.json` nadal przechowuje stan starego pipeline'u i synchronizuje środowisko w istniejącym manifeście przy zapisie. Raport i klatki są zapisywane pod jednym `runId`, a atomowy zapis manifestu przełącza oba naraz. Stare ścieżki `analysis/frames.json` i `analysis/scene-analysis.json` pozostają kopiami kompatybilności.
 
 ```
 scene.json                      kanoniczny manifest v1
 scene-history/<revision>.json    poprzednie rewizje manifestu
 assets/<asset-id>/object.json    referencja / model i metadane
 assets/<asset-id>/versions/      historia assetu
+assets/<asset-id>/files/<id>/    niezmienne wersje GLB / obrazu i miniatura
 analysis/frames.json             ostatni udany wybór klatek
 analysis/scene-analysis.json     ostatni udany raport
 analysis/runs/<job-id>/          wersje raportów i wybrane JPEG
@@ -45,6 +50,10 @@ Nowe endpointy: `GET /api/spatial/providers`, `GET /api/projects/:id/spatial`, `
 Analiza jest zadaniem w tle z rzeczywistymi etapami i możliwością anulowania. Procent oceny klatek oznacza liczbę ocenionych próbek; podczas odpowiedzi AI nie pokazujemy fikcyjnego procentu. Po restarcie przerwane zadanie można uruchomić ponownie. Ostatni udany raport pozostaje dostępny.
 
 Architektura i dalsza migracja: [SPATIAL_STUDIO_PLAN.md](docs/SPATIAL_STUDIO_PLAN.md). Inspiracja podziałem środowiska, obiektów i dostawców: [Image Blaster](https://github.com/neilsonnn/image-blaster); bez kopiowania jego implementacji.
+
+Audyt istniejącej wersji i zakres tego przyrostu: [SPATIAL_AUDIT.md](docs/SPATIAL_AUDIT.md). Import pliku: `POST .../assets/import?name=Chair.glb` (surowe bajty); podmiana: `POST .../assets/:assetId/import?name=Chair.glb&version=1`. Edycja metadanych: `PATCH .../assets/:assetId` z `{version, patch: {name, metadata}}`. Historia: `GET .../assets/:assetId/versions`; plik: `GET .../assets/:assetId/file?slot=model&download=1`. Zapisy wymagają `X-Studio-Token` i lokalnego źródła żądania. Szczegóły kontraktów są w planie architektury.
+
+`npm ci` oraz `npm start` uruchamiają bibliotekę i analizę bez binariów GPU/viewera, gdy FFmpeg i ffprobe są w PATH. Rekonstrukcja i podgląd gotowego splata nadal wymagają pełnej instalacji opisanej poniżej. Opcjonalne `STUDIO_WORKSPACE` wskazuje osobny katalog danych (projekty trafiają do jego podkatalogu `projects`); domyślnie używane jest dotychczasowe `workspace/`.
 
 Testy: `npm test`. Po uruchomieniu Studio: `npm run test:spatial-api -- http://127.0.0.1:8766` sprawdza rzeczywisty FFmpeg, upload, analizę, obrazy, manifest, ochronę zapisu i konflikty rewizji. Tworzy mały projekt syntetyczny i archiwizuje go po weryfikacji. Uruchamianie na wybranym porcie: `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Start-Studio.ps1 -Port 8766`.
 

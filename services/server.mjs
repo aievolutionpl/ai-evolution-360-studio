@@ -1,8 +1,8 @@
 import http from 'node:http';
-import { createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, statSync, statfsSync, readdirSync, renameSync, writeFileSync, copyFileSync } from 'node:fs';
+import { createWriteStream, existsSync, mkdirSync, readFileSync, statSync, statfsSync, readdirSync, renameSync, writeFileSync, copyFileSync } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
 import { Transform } from 'node:stream';
-import { dirname, join, resolve, extname, basename, sep } from 'node:path';
+import { dirname, join, resolve, extname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
 import {exportBlender} from './blender-export.mjs';
@@ -12,14 +12,14 @@ import { receivePhoto } from './photo-upload.mjs';
 import { cameraSettings } from './viewer-camera.mjs';
 import { ProjectStore, validId } from './project-manager/index.mjs';
 import { run, stopChild, trainingProgress } from './spirula-runner/index.mjs';
-import { defaultSettings } from '../vendor/supersplat-viewer/dist/settings.js';
+import { json, body, asset, safePath } from './api/http.mjs';
 import { createSpatialRoutes } from './api/spatial-routes.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 if (existsSync(join(root, '.env'))) process.loadEnvFile(join(root, '.env'));
 const port = Number(process.env.STUDIO_PORT || 8765);
 const token = randomBytes(24).toString('hex');
-const store = new ProjectStore(join(root, 'workspace/projects'));
+const store = new ProjectStore(join(resolve(process.env.STUDIO_WORKSPACE || join(root, 'workspace')), 'projects'));
 store.recover();
 const engine = ['toolchain/spirula-build-source/build_vulkan/spirula.exe','toolchain/spirula/spirula.exe'].map(p=>join(root,p)).find(existsSync);
 const presets = { fast: { frames:100, size:1280, iterations:3000, cap:150000, quality:'low' }, standard:{ frames:180,size:1600,iterations:10000,cap:400000,quality:'medium' }, max:{frames:400,size:2048,iterations:30000,cap:1000000,quality:'high'} };
@@ -28,23 +28,8 @@ const health = { product:'AI Evolution 360 Studio', version:'0.6.0', ready:false
 if (engine) Promise.all([run(engine,['--help'],{timeout:15000}),run(engine,['sam','devices'],{timeout:15000}),run('ffprobe',['-version'],{timeout:15000}),run('ffmpeg',['-version'],{timeout:15000})]).then(([version,gpu])=>Object.assign(health,{ready:true,engine:version.split('\n')[0],gpu:gpu.split('\n').find(l=>/NVIDIA|AMD|Intel/.test(l))?.replace(/\s+/g,' ').trim() || 'Vulkan'})).catch(e=>Object.assign(health,{ready:false,engine:e.message}));
 else health.engine = 'Nie znaleziono Spirula. Sprawdź toolchain.';
 
-const json = (res, data, status=200) => {res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
 const publicProject = p => ({...p, sourcePath:undefined, logPath:undefined});
 function requireDiskSpace(project){const disk=statfsSync(store.path(project.id));if(disk.bavail*disk.bsize<5*1024**3)throw new Error('Za mało miejsca na dysku projektu. Zwolnij co najmniej 5 GB przed generacją lub eksportem GLB (duże filmy mogą wymagać więcej).');}
-function asset(res, req, path, download=false) {
-    if (!existsSync(path) || !statSync(path).isFile()) {res.writeHead(404);return res.end('Nie znaleziono pliku.');}
-    const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.json':'application/json','.glb':'model/gltf-binary','.sog':'application/octet-stream','.ply':'application/octet-stream','.jpg':'image/jpeg','.png':'image/png','.svg':'image/svg+xml','.mp4':'video/mp4','.mov':'video/quicktime','.txt':'text/plain; charset=utf-8','.log':'text/plain; charset=utf-8'};
-    const size=statSync(path).size;
-    const headers={'Content-Type':mime[extname(path)]||'application/octet-stream','Accept-Ranges':'bytes','Cache-Control':'no-cache','X-Content-Type-Options':'nosniff'};
-    if(download) headers['Content-Disposition']=`attachment; filename="${basename(path).replace(/[^a-zA-Z0-9._-]/g,'_')}"`;
-    let start=0,end=size-1,status=200;
-    if(req.headers.range){const m=req.headers.range.match(/^bytes=(\d+)-(\d*)$/);if(!m){res.writeHead(416);return res.end();}start=+m[1];end=m[2]?Math.min(+m[2],size-1):size-1;if(start>end||start>=size){res.writeHead(416,{'Content-Range':`bytes */${size}`});return res.end();}status=206;headers['Content-Range']=`bytes ${start}-${end}/${size}`;}
-    headers['Content-Length']=Math.max(0,end-start+1);res.writeHead(status,headers);
-    if(req.method==='HEAD'||size===0)return res.end();
-    const stream=createReadStream(path,{start,end});stream.on('error',()=>res.destroy());stream.pipe(res);
-}
-function safePath(base, path){const p=resolve(base,path);if(!p.startsWith(resolve(base)+sep))throw new Error('Niedozwolona ścieżka.');return p;}
-async function body(req,limit=10000){let text='';for await(const chunk of req){text+=chunk;if(text.length>limit)throw new Error('Zbyt duże żądanie.');}return JSON.parse(text||'{}');}
 async function probe(project) {
     const raw = await run('ffprobe',['-v','error','-show_streams','-show_format','-of','json',project.sourcePath],{timeout:30000});
     const info=JSON.parse(raw), videos=info.streams.filter(s=>s.codec_type==='video'&&!s.disposition?.attached_pic);
@@ -126,7 +111,7 @@ async function processProject(project, options) {
             stage(5);
             await command(process.execPath,[join(root,'vendor/splat-transform/bin/cli.mjs'),ply,'--rotate=-90,0,0',join(web,'scene.sog')]);
             if(!existsSync(join(web,'scene.sog'))||statSync(join(web,'scene.sog')).size<100)throw new Error('Eksport SOG jest pusty.');
-            stage(6);const settings=cameraSettings(defaultSettings('object'),registered,join(runs,'scene_transform.json'));settings.background.color=[0.035,0.059,0.094];writeFileSync(join(web,'settings.json'),JSON.stringify(settings));
+            stage(6);const { defaultSettings } = await import('../vendor/supersplat-viewer/dist/settings.js');const settings=cameraSettings(defaultSettings('object'),registered,join(runs,'scene_transform.json'));settings.background.color=[0.035,0.059,0.094];writeFileSync(join(web,'settings.json'),JSON.stringify(settings));
             project.output={web:attempt,ply: `${attempt}/run/${checkpoints.at(-1)}/splat.ply`,bytes:statSync(join(web,'scene.sog')).size};
             project.stage=7;project.state='ready';project.progress=null;project.lastLine='Scena gotowa do obejrzenia.';
         } catch(error){project.state=job.cancelled?'cancelled':'failed';project.error=job.cancelled?'Zadanie anulowane. Materiał źródłowy jest zachowany.':photos&&project.stage===3?'Nie udało się wiarygodnie połączyć zdjęć. Dodaj więcej ujęć pośrednich z różnych pozycji (najlepiej 12–30), unikaj poruszających się osób. Szczegóły są w logu.':error.message;project.progress=null;}
@@ -194,6 +179,13 @@ async function environmentProject(project,options){
 }
 
 const spatial = createSpatialRoutes({ store, json, body, asset, reconstructionBusy: () => Boolean(active) });
+// Keep manifests current when legacy reconstruction/export code changes project outputs.
+store.onSave = project => {
+    if (existsSync(join(store.path(project.id), 'scene.json'))) {
+        try { spatial.scenes.get(project); }
+        catch (error) { console.warn('Manifest sceny wymaga naprawy: ' + error.message); }
+    }
+};
 const server=http.createServer(async(req,res)=>{
     try {
         if(![`127.0.0.1:${port}`,`localhost:${port}`].includes(req.headers.host)){res.writeHead(403);return res.end();}
@@ -267,7 +259,7 @@ const server=http.createServer(async(req,res)=>{
             }
             if(action==='start'&&req.method==='POST')return json(res,publicProject(await processProject(project,await body(req))),202);
             if(action==='cancel'&&req.method==='POST'){if(active?.id!==id)return json(res,{error:'Projekt nie jest przetwarzany.'},409);active.cancelled=true;project.state='cancelling';store.save(project);stopChild(active.child);return json(res,{ok:true});}
-            if(action==='archive'&&req.method==='POST'){if(active?.id===id)return json(res,{error:'Najpierw zakończ zadanie.'},409);project.archived=!project.archived;store.save(project);return json(res,publicProject(project));}
+            if(action==='archive'&&req.method==='POST'){if(active?.id===id||spatial.jobs.active?.projectId===id)return json(res,{error:'Najpierw zakończ zadanie.'},409);project.archived=!project.archived;store.save(project);return json(res,publicProject(project));}
             if(action==='logs'&&req.method==='GET'){if(!project.logPath)return json(res,{text:'Log pojawi się po uruchomieniu przetwarzania.'});return json(res,{text:readFileSync(project.logPath,'utf8').slice(-24000)});}
             if(action==='logfile')return asset(res,req,project.logPath||'',true);
             if(action==='poster')return asset(res,req,join(store.path(id),'source','poster.jpg'));
